@@ -32,3 +32,8 @@ Thumbs.db
 
 # Scripts de prueba aislados
 list_models.js
+
+# Documentación de proceso (Privada)
+docs/*
+# Guía Técnica Profesional (Pública)
+!docs/technical_guide.md
