@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  telegramId    String    @unique
+  name          String?
+  level         String    @default("A1") // Nivel CEFR estimado
+  goal          String    @default("conversation")
+  sessionCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  sessions      Session[]
+  weakPoints    WeakPoint[]
+  messages      MessageLog[]
+}
+
+model Session {
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  
+  transcript         String
+  corrected          String
+  grammarScore       Int
+  pronunciationScore Int
+  fluencyScore       Int
+  vocabScore         Int
+  createdAt          DateTime  @default(now())
+}
+
+model WeakPoint {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  
+  type        String    // 'grammar' o 'pronunciation'
+  pattern     String    // e.g., 'past_tense', 'th_sound'
+  frequency   Int       @default(1)
+  lastSeen    DateTime  @default(now())
+
+  @@unique([userId, type, pattern])
+}
+
+model MessageLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  role      String   // 'user' o 'model'
+  content   String   // El contenido del mensaje
+  createdAt DateTime @default(now())
+}
