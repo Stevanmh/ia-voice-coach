@@ -1,38 +1,43 @@
-# Guía Técnica: AI English Voice Coach
+# Technical Guide: AI English Voice Coach
 
 ## 🎯 Objetivo Técnico
-Sistema de tutoría de voz basado en IA con persistencia de datos para el seguimiento del progreso del alumno, enfocado en feedback multimodal inmediato.
+Desarrollar un sistema de tutoría lingüística asíncrono y proactivo, basado en arquitectura de microservicios lógicos. El sistema procesa inputs de voz nativos, realiza inferencia multimodal mediante LLMs para generar evaluaciones estructuradas, y mantiene la persistencia del estado cognitivo del usuario para adaptar dinámicamente la dificultad (CEFR).
 
-## 🏗️ Arquitectura General
-El sistema sigue un patrón de **Controladores y Servicios** para desacoplar la lógica de negocio del canal de comunicación (Telegram).
+## 🏗️ Arquitectura de Procesamiento (Pipeline)
 
-### Componentes Clave:
-1. **Telegram Controller:** Gestiona la interfaz de usuario, botones inline y comandos nativos.
-2. **AI Service (Gemini 3.1 Flash):** Motor multimodal que procesa audio directamente (.mp3/16kHz) y genera evaluaciones pedagógicas en JSON.
-3. **User Service:** Capa de persistencia que gestiona perfiles, sesiones y métricas en Supabase.
-4. **TTS Service (Google Cloud):** Genera audio de alta fidelidad para la práctica de *shadowing* y correcciones.
-5. **Challenge Service (Proactivo):** Motor basado en `node-cron` que analiza los `WeakPoints` del usuario para generar retos lingüísticos personalizados.
-6. **Chat Memory Engine:** Sistema de gestión de contexto que inyecta el historial de mensajes a la IA para mantener conversaciones coherentes.
+El sistema implementa un pipeline de datos lineal y no bloqueante para el procesamiento de medios:
+1. **Ingesta:** Recepción de audio nativo de Telegram (`.oga`).
+2. **Transcodificación (FFmpeg):** Normalización de la onda de audio a `.mp3` (Mono, 16kHz) optimizado para latencia en modelos neuronales.
+3. **Inferencia Multimodal (Gemini):** Análisis directo de la onda de sonido y texto en una sola pasada.
+4. **Persistencia (Prisma):** Inserción transaccional de métricas y metadatos.
+5. **Feedback Loop (TTS):** Síntesis de voz para corrección en shadowing.
 
-## 📊 Sistema de Evaluación y Progreso
-El sistema no solo entrega puntajes, sino que justifica pedagógicamente cada métrica:
-- **Grammar & Vocabulary:** Basado en errores detectados vs. nivel **CEFR** dinámico (A1-C2).
-- **Pronunciation & Fluency:** Análisis del ritmo y fonética mediante el modelo multimodal.
+## 🧩 Módulos Core del Sistema
 
-### Algoritmo de WeakPoints
-- Identifica patrones de error recurrentes (ej. "pronombres personales", "pasado simple").
-- Estos puntos alimentan al `Challenge Service` para sesiones de refuerzo dirigidas.
+### 1. Audio Processing Engine (FFmpeg)
+Maneja la conversión de los códecs propietarios de Telegram. Se definió una tasa de muestreo de 16kHz en un solo canal (Mono) como estándar arquitectónico. Esto reduce el tamaño del payload enviado a la API de IA en un 70% sin perder fidelidad fonética, mitigando cuellos de botella en red.
 
-## ⚙️ Stack Tecnológico
-- **Runtime:** Node.js 20 LTS
-- **Lenguaje:** TypeScript 5.x (con Path Aliases `@services/*`, etc.)
-- **ORM:** Prisma 6 (Rollback estratégico desde v7 para estabilidad local)
-- **DB:** PostgreSQL (Supabase)
-- **Multimedia:** FFmpeg (Transcodificación de .oga a .mp3)
+### 2. Cognitive Engine & Prompt Engineering (Gemini 3.1 Flash)
+En lugar de depender de una arquitectura en cascada clásica (STT -> LLM), el sistema utiliza inferencia multimodal nativa.
+*   **Zero-Shot JSON Schema:** Se implementó un *system prompt* estricto que obliga a la IA a devolver un árbol JSON validable en runtime.
+*   **Chat Memory Injector:** El módulo hidrata el prompt con los últimos N mensajes de la sesión actual, dotando al LLM de persistencia de contexto conversacional real.
 
-## ⚠️ Lecciones Aprendidas (Troubleshooting)
-### Gestión de Aliases en Producción
-Para el despliegue en VPS, se implementó `tsc-alias` para resolver las rutas de TypeScript en el código compilado final, evitando errores de módulo no encontrado en Node.js nativo.
+### 3. Persistence & State Layer (Prisma + Supabase)
+Diseño de base de datos relacional orientada a eventos de aprendizaje.
+*   **Seguimiento Granular:** Se almacenan vectores de puntuación independientes (Gramática, Pronunciación, Fluidez, Vocabulario).
+*   **WeakPoint Algorithm:** Motor estadístico que identifica y agrupa patrones de error sintáctico o fonético para ser explotados en el futuro.
+
+### 4. Proactive Orchestration (Cron Engine)
+Transición de un bot reactivo a un sistema proactivo. Un daemon (`node-cron`) barre la base de datos para recuperar perfiles inactivos y `WeakPoints`, inyectándolos en Gemini para generar y emitir retos conversacionales (Roleplay) no solicitados, aumentando el *engagement* del usuario.
+
+## 📈 Sistema de Evaluación Dinámica (CEFR)
+El motor calibra la dificultad de sus respuestas evaluando la desviación estándar del progreso del alumno, ajustando dinámicamente la variable **CEFR** (Common European Framework of Reference) desde A1 hasta C2 de forma autónoma en la base de datos.
+
+## 🐳 Estrategia de Despliegue (Contenedorización)
+Para garantizar la inmutabilidad de la infraestructura y resolver la dependencia binaria de FFmpeg en el sistema host, el proyecto está completamente dockerizado.
+*   **Base Image:** `node:20-slim` (Minimiza superficie de ataque).
+*   **Integración de SO:** Instalación de dependencias C++ y códecs de audio en tiempo de construcción del contenedor.
+*   **Volume Mapping:** Aislamiento de la carpeta de procesamiento temporal (`/temp`) hacia el host para prevenir *memory leaks* y saturación del contenedor de aplicación.
 
 ---
-*Documento vivo - Actualizado tras Fase 8: Tutor Proactivo y Conversacional.*
+*Documentación de Arquitectura de Software - Revisión: Fase 9 (Producción).*

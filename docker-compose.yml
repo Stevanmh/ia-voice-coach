@@ -1,0 +1,13 @@
+services:
+  voice-coach-bot:
+    build: .
+    container_name: voice-coach-bot
+    restart: always
+    env_file: .env
+    volumes:
+      - ./temp:/app/temp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
