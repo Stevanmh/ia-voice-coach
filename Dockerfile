@@ -1,25 +1,26 @@
 # Usamos una imagen ligera de Node
 FROM node:20-slim
 
-# Instalamos FFmpeg a nivel de sistema operativo dentro del contenedor
+# Instalamos FFmpeg (necesario para el audio)
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copiamos archivos de dependencias
-COPY package*.json ./
+# Copiamos manifiestos de configuración
+COPY package*.json tsconfig.json ./
 
-# Instalamos dependencias de producción únicamente
-RUN npm install --omit=dev
+# Instalamos TODAS las dependencias (necesarias para compilar TypeScript)
+RUN npm install
 
-# Copiamos el código compilado (dist) y el esquema de Prisma
-COPY dist ./dist
+# Copiamos el código fuente y el esquema de base de datos
+COPY src ./src
 COPY prisma ./prisma
 
-# Generamos el cliente de Prisma para el entorno Linux del contenedor
+# Generamos el cliente de Prisma para Linux
 RUN npx prisma generate
 
-# Exponemos el puerto si fuera necesario (opcional para bot de Telegram)
-# EXPOSE 3000
+# Compilamos el código de TypeScript a JavaScript (crea la carpeta dist)
+RUN npm run build
 
+# Iniciamos el bot
 CMD ["npm", "start"]
