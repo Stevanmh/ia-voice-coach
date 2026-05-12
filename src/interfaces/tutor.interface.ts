@@ -16,6 +16,7 @@ export interface WeakPoint {
 export interface TutorFeedbackV3 {
   original_transcript: string;    // Exactamente lo que dijo el usuario
   corrected_version:   string;    // Versión nativa fluida
+  corrected_version_es: string;    // Traducción al español para constatar intención
   
   // ERROR PRINCIPAL — Solo 1 (el de mayor impacto comunicativo hoy)
   key_error: {

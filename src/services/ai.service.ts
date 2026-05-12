@@ -43,6 +43,7 @@ Analyze the audio and return exactly this JSON structure:
 {
   "original_transcript": "...",
   "corrected_version": "...",
+  "corrected_version_es": "...",
   "key_error": {
     "what": "...",
     "fix": "...",

@@ -151,23 +151,12 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
             console.error("⚠️ Error silencioso en persistencia DB:", dbError);
         }
 
-        // 5. TAREA 10.6: Formateador V3 - EL COACH (Compacto)
-        const coachReply = 
-            `${feedback.coach_comment}\n\n` +
-            `🎙️ *${feedback.follow_up}*\n` +
-            `_(Traducción: ${feedback.follow_up_es})_`;
-        
-        await ctx.reply(coachReply, { 
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-                Markup.button.callback('📊 Estadísticas', 'show_stats')
-            ])
-        });
-
-        // 6. TAREA 10.6: Formateador V3 - LA PIZARRA (Jerarquizada)
+        // 5. TAREA 10.6: Formateador V3 - LA PIZARRA (Jerarquizada)
+        // Se envía PRIMERO para que el estudiante entienda su error antes del reto.
         let lessonText = `👨‍🏫 *La Pizarra*\n\n`;
         lessonText += `📝 _"${feedback.original_transcript}"_\n`;
-        lessonText += `✅ _"${feedback.corrected_version}"_\n\n`;
+        lessonText += `✅ _"${feedback.corrected_version}"_\n`;
+        lessonText += `_(Traducción: ${feedback.corrected_version_es})_\n\n`;
         lessonText += `🔑 *Error clave — ${feedback.key_error.pattern}*\n`;
         lessonText += `❌ ${feedback.key_error.what} → ✅ ${feedback.key_error.fix}\n`;
         lessonText += `📌 Tu caso: \`${feedback.key_error.your_case}\`\n`;
@@ -180,6 +169,20 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
         }
         
         await ctx.reply(lessonText, { parse_mode: 'Markdown' });
+
+        // 6. TAREA 10.6: Formateador V3 - EL COACH (Compacto)
+        // Se envía DESPUÉS para que el botón de stats y la pregunta queden al final.
+        const coachReply = 
+            `${feedback.coach_comment}\n\n` +
+            `🎙️ *${feedback.follow_up}*\n` +
+            `_(Traducción: ${feedback.follow_up_es})_`;
+        
+        await ctx.reply(coachReply, { 
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+                Markup.button.callback('📊 Estadísticas', 'show_stats')
+            ])
+        });
 
         // 7. Audio TTS y Limpieza
         try {
