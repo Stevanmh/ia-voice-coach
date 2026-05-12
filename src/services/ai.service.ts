@@ -26,7 +26,8 @@ const model = genAI.getGenerativeModel({
   generationConfig: {
     // TAREA 10.1: Desactivar reasoning tokens para ganar ~30s de latencia
     // @ts-ignore - 'thinkingConfig' existe en la API pero puede no estar en los tipos locales aún
-    thinkingConfig: { thinkingBudget: 0 }
+    thinkingConfig: { thinkingBudget: 0 },
+    responseMimeType: "application/json"
   }
 });
 
@@ -89,6 +90,9 @@ export const analyzeVoiceAndProvideFeedback = async (
       ]);
     
       const responseText = result.response.text();
+      console.log("=== DEBUG GEMINI RESPONSE ===");
+      console.log(responseText);
+      console.log("=============================");
       
       // Limpieza robusta de JSON
       const firstBracket = responseText.indexOf('{');
