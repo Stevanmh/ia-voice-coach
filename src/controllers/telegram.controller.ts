@@ -154,8 +154,8 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
         // 5. TAREA 10.6: Formateador V3 - LA PIZARRA (Jerarquizada)
         // Se envía PRIMERO para que el estudiante entienda su error antes del reto.
         let lessonText = `👨‍🏫 *La Pizarra*\n\n`;
-        lessonText += `📝 _"${feedback.original_transcript}"_\n`;
-        lessonText += `✅ _"${feedback.corrected_version}"_\n`;
+        lessonText += `📝 _"${feedback.original_transcript}"_\n\n`;
+        lessonText += `✅ _"${feedback.corrected_version}"_\n\n`;
         lessonText += `_(Traducción: ${feedback.corrected_version_es})_\n\n`;
         lessonText += `🔑 *Error clave — ${feedback.key_error.pattern}*\n`;
         lessonText += `❌ ${feedback.key_error.what} → ✅ ${feedback.key_error.fix}\n`;
