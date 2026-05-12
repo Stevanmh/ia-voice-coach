@@ -13,40 +13,33 @@ export interface WeakPoint {
   frequency: number;
 }
 
-export interface ScoreJustification {
-  grammar:       string;
-  pronunciation: string;
-  fluency:       string;
-  vocabulary:    string;
-}
+export interface TutorFeedbackV3 {
+  original_transcript: string;    // Exactamente lo que dijo el usuario
+  corrected_version:   string;    // Versión nativa fluida
+  
+  // ERROR PRINCIPAL — Solo 1 (el de mayor impacto comunicativo hoy)
+  key_error: {
+    what:      string;  // Fragmento erróneo exacto (max 10 palabras)
+    fix:       string;  // Corrección (max 10 palabras)
+    pattern:   string;  // Regla en español (MAX 12 palabras — obligatorio)
+    your_case: string;  // "palabra_error→fix | palabra_error→fix" con palabras REALES del audio
+  };
 
-export interface TutorFeedback {
-  original_transcript:  string;
-  corrected_version:    string;
-  corrected_version_translation: string; // Traducción al español
-  grammar_errors:       GrammarError[];
-  pronunciation_tips:   PronTip[];
-  grammar_score:        number;
-  pronunciation_score:  number;
-  fluency_score:        number;
-  vocabulary_score:     number;
-  score_justifications: ScoreJustification;
-  encouragement_message: string;
-  follow_up_question:    string; // Pregunta en Inglés
-  follow_up_translation: string; // Traducción en Español
-  estimated_cefr_level:  'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
-}
+  // ERRORES MENORES — Máximo 2, sin explicación (solo par what→fix)
+  minor_errors: Array<{ what: string; fix: string }>;
 
-export interface GrammarError {
-  error:       string;
-  correction:  string;
-  explanation: string;
-  rule:        string; // Regla gramatical sencilla
-  examples:    { correct: string, incorrect: string }[];
-}
+  // VOZ DEL COACH — Directo y humano, sin halago artificial
+  coach_comment: string;  // 1 frase en español, MAX 20 palabras, honesta y directa
+  follow_up:     string;  // Pregunta en inglés, MAX 15 palabras
+  follow_up_es:  string;  // Traducción al español
 
-export interface PronTip {
-  word:  string;
-  ipa:   string;
-  tip:   string;
+  // MÉTRICAS — Solo números (las justificaciones verbosas se eliminan)
+  scores: {
+    grammar:       number;  // 0-100
+    pronunciation: number;  // 0-100
+    fluency:       number;  // 0-100
+    vocabulary:    number;  // 0-100
+  };
+
+  cefr: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 }

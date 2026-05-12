@@ -111,81 +111,94 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
     const from = ctx.from;
     if (!voiceMsg || !from) return;
     
-    await ctx.reply('⏳ Escuchando y analizando tu voz con IA...');
+    // TAREA 10.7: UX de Latencia Percibida
+    // Iniciamos indicador de "typing" cada 4s mientras Gemini procesa
+    const typingInterval = setInterval(() => {
+        ctx.sendChatAction('typing').catch(() => {});
+    }, 4000);
+
+    const initialMsg = await ctx.reply('⏳ Escuchando y analizando tu voz...');
     
     try {
-        // 1. Obtener o crear usuario y su historial de chat
+        // 1. Obtener usuario e historial
         const user = await getOrCreateUser(from.id.toString(), from.first_name);
         const chatHistory = await getChatHistory(user.id);
 
-        // 2. Procesar audio
+        // 2. Procesar audio (Descarga y Conversión)
         const fileLink = await ctx.telegram.getFileLink(voiceMsg.file_id);
         const finalMp3Path = await downloadAndConvertAudio(fileLink, voiceMsg.file_id);
         
-        // 3. Inferencia Multimodal Conversacional (V2)
-        const feedback = await analyzeVoiceAndProvideFeedback(finalMp3Path, user.name || "Estudiante", chatHistory);
+        // 3. Inferencia V3 (Thinking: 0) - EL GRAN SALTO DE VELOCIDAD
+        const feedback = await analyzeVoiceAndProvideFeedback(
+            finalMp3Path, 
+            user.name || "Estudiante", 
+            user.level, 
+            chatHistory
+        );
         
-        // 4. Persistencia: Sesión, Mensajes (Memoria) y Nivel
+        // Detenemos el indicador de escritura ya que tenemos la respuesta
+        clearInterval(typingInterval);
+
+        // 4. TAREA 10.5: Persistencia en paralelo (Ahorro ~150ms)
         try {
-            await saveUserSession(user.id, feedback, feedback.original_transcript);
-            await saveMessage(user.id, 'user', feedback.original_transcript);
-            await saveMessage(user.id, 'model', feedback.follow_up_question);
-            
-            // Si el nivel cambió, lo actualizamos
-            if (feedback.estimated_cefr_level !== user.level) {
-                await updateUserLevel(user.id, feedback.estimated_cefr_level);
-            }
+            await Promise.all([
+                saveUserSession(user.id, feedback as any, feedback.original_transcript),
+                saveMessage(user.id, 'user', feedback.original_transcript),
+                saveMessage(user.id, 'model', feedback.follow_up),
+                ...(feedback.cefr !== user.level ? [updateUserLevel(user.id, feedback.cefr)] : [])
+            ]);
         } catch (dbError) {
-            console.error("Error en persistencia V2:", dbError);
+            console.error("⚠️ Error silencioso en persistencia DB:", dbError);
         }
 
-        // 5. Respuesta 1: EL COACH (Conversación Natural + Audio TTS)
-        const coachReply = `${feedback.encouragement_message}\n\n🎙️ *${feedback.follow_up_question}*\n_(Traducción: ${feedback.follow_up_translation})_`;
+        // 5. TAREA 10.6: Formateador V3 - EL COACH (Compacto)
+        const coachReply = 
+            `${feedback.coach_comment}\n\n` +
+            `🎙️ *${feedback.follow_up}*\n` +
+            `_(Traducción: ${feedback.follow_up_es})_`;
         
         await ctx.reply(coachReply, { 
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-                Markup.button.callback('📊 Ver mis promedios', 'show_stats')
+                Markup.button.callback('📊 Estadísticas', 'show_stats')
             ])
         });
 
-        // 6. Respuesta 2: LA PIZARRA DEL PROFESOR (Feedback Técnico)
-        let lessonText = `👨‍🏫 *La Pizarra del Profe*\n\n`;
-        lessonText += `📝 *Escuché:* "${feedback.original_transcript}"\n`;
-        lessonText += `✅ *Corrección:* "${feedback.corrected_version}"\n`;
-        lessonText += `_(Significa: ${feedback.corrected_version_translation})_\n\n`;
+        // 6. TAREA 10.6: Formateador V3 - LA PIZARRA (Jerarquizada)
+        let lessonText = `👨‍🏫 *La Pizarra*\n\n`;
+        lessonText += `📝 _"${feedback.original_transcript}"_\n`;
+        lessonText += `✅ _"${feedback.corrected_version}"_\n\n`;
+        lessonText += `🔑 *Error clave — ${feedback.key_error.pattern}*\n`;
+        lessonText += `❌ ${feedback.key_error.what} → ✅ ${feedback.key_error.fix}\n`;
+        lessonText += `📌 Tu caso: \`${feedback.key_error.your_case}\`\n`;
 
-        if (feedback.grammar_errors.length > 0) {
-            lessonText += `━━━━━ DETALLES ━━━━━\n`;
-            for (const error of feedback.grammar_errors) {
-                lessonText += `❌ *Error:* "${error.error}"\n`;
-                lessonText += `✅ *Corrección:* "${error.correction}"\n`;
-                lessonText += `📖 *Regla:* ${error.rule}\n`;
-                lessonText += `💡 *Ejemplos:*\n`;
-                error.examples.forEach(ex => {
-                    lessonText += `   • OK: _${ex.correct}_\n`;
-                    lessonText += `   • NO: _${ex.incorrect}_\n`;
-                });
-                lessonText += `\n`;
-            }
+        if (feedback.minor_errors && feedback.minor_errors.length > 0) {
+            lessonText += `\n━━ *También:*\n`;
+            feedback.minor_errors.forEach(err => {
+                lessonText += `• ${err.what} → ${err.fix}\n`;
+            });
         }
         
         await ctx.reply(lessonText, { parse_mode: 'Markdown' });
 
-        // 7. Audio de Corrección (TTS del follow-up para practicar oído)
+        // 7. Audio TTS y Limpieza
         try {
-            const ttsPath = await generateTTSAudio(feedback.follow_up_question, voiceMsg.file_id);
-            await ctx.sendVoice({ source: ttsPath }, { caption: '🔊 Escucha la pregunta del Coach' });
+            const ttsPath = await generateTTSAudio(feedback.follow_up, voiceMsg.file_id);
+            await ctx.sendVoice({ source: ttsPath }, { caption: '🔊 Escucha al Coach' });
             
             await cleanupFiles([finalMp3Path, finalMp3Path.replace('.mp3', '.ogg'), ttsPath]);
         } catch (ttsError) {
-            console.error("Error enviando TTS:", ttsError);
+            console.error("❌ Error en TTS:", ttsError);
             await cleanupFiles([finalMp3Path, finalMp3Path.replace('.mp3', '.ogg')]);
         }
         
+        // Borramos el mensaje de "analizando" para limpiar el chat
+        await ctx.telegram.deleteMessage(ctx.chat!.id, initialMsg.message_id).catch(() => {});
+
     } catch (error) {
-        console.error("Error en Telegram Controller:", error);
-        await ctx.reply('❌ Lo siento, hubo un error analizando tu audio. Por favor intenta de nuevo.');
+        clearInterval(typingInterval);
+        console.error("❌ Error crítico en Controller:", error);
+        await ctx.reply('❌ Lo siento, la IA está saturada. ¿Puedes intentar de nuevo?');
     }
   });
 };

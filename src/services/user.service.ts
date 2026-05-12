@@ -1,5 +1,5 @@
 import { prisma } from '@lib/prisma';
-import { TutorFeedback } from '@interfaces/tutor.interface';
+import { TutorFeedbackV3 } from '@interfaces/tutor.interface';
 
 export const getOrCreateUser = async (telegramId: string, name?: string) => {
     return await prisma.user.upsert({
@@ -16,7 +16,7 @@ export const getOrCreateUser = async (telegramId: string, name?: string) => {
 
 export const saveUserSession = async (
     userId: string, 
-    feedback: TutorFeedback, 
+    feedback: TutorFeedbackV3, 
     transcript: string
 ) => {
     // 1. Guardar la sesión
@@ -25,10 +25,10 @@ export const saveUserSession = async (
             userId,
             transcript: feedback.original_transcript,
             corrected: feedback.corrected_version,
-            grammarScore: feedback.grammar_score,
-            pronunciationScore: feedback.pronunciation_score,
-            fluencyScore: feedback.fluency_score,
-            vocabScore: feedback.vocabulary_score,
+            grammarScore: feedback.scores.grammar,
+            pronunciationScore: feedback.scores.pronunciation,
+            fluencyScore: feedback.scores.fluency,
+            vocabScore: feedback.scores.vocabulary,
         }
     });
 
@@ -38,17 +38,21 @@ export const saveUserSession = async (
         data: { sessionCount: { increment: 1 } }
     });
 
-    // 3. Registrar puntos débiles (basado en los errores gramaticales)
-    for (const error of feedback.grammar_errors) {
-        // Un simplificación: usamos la descripción del error como patrón
-        const pattern = error.error.toLowerCase().substring(0, 50);
-        
+    // 3. Registrar puntos débiles (Tarea 10.5: Basado en key_error y minor_errors)
+    const errorsToTrack = [
+        { pattern: feedback.key_error.pattern, type: 'grammar' as const },
+        ...feedback.minor_errors.map(e => ({ pattern: e.what.substring(0, 50), type: 'grammar' as const }))
+    ];
+
+    for (const error of errorsToTrack) {
+        if (!error.pattern) continue;
+
         await prisma.weakPoint.upsert({
             where: {
                 userId_type_pattern: {
                     userId,
-                    type: 'grammar',
-                    pattern
+                    type: error.type,
+                    pattern: error.pattern
                 }
             },
             update: {
@@ -57,8 +61,8 @@ export const saveUserSession = async (
             },
             create: {
                 userId,
-                type: 'grammar',
-                pattern,
+                type: error.type,
+                pattern: error.pattern,
                 frequency: 1
             }
         });
@@ -68,7 +72,6 @@ export const saveUserSession = async (
 };
 
 export const getUserStats = async (userId: string) => {
-    // Consulta Agregada: PostgreSQL hace el cálculo matemático, no Node.js
     const stats = await prisma.session.aggregate({
         where: { userId },
         _avg: {
@@ -78,13 +81,12 @@ export const getUserStats = async (userId: string) => {
             vocabScore: true
         },
         _count: {
-            id: true // Contamos cuántas sesiones existen
+            id: true
         }
     });
 
     return {
         totalSessions: stats._count.id,
-        // Prisma devuelve null si no hay sesiones, así que usamos || 0 como fallback
         grammarAvg: Math.round(stats._avg.grammarScore || 0),
         pronAvg: Math.round(stats._avg.pronunciationScore || 0),
         fluencyAvg: Math.round(stats._avg.fluencyScore || 0),
@@ -96,9 +98,9 @@ export const getTopWeakPoints = async (userId: string) => {
     return await prisma.weakPoint.findMany({
         where: { userId },
         orderBy: {
-            frequency: 'desc' // Los errores más "pesados" primero
+            frequency: 'desc'
         },
-        take: 3 // Solo nos interesan los 3 problemas principales
+        take: 3
     });
 };
 
@@ -108,7 +110,6 @@ export const getChatHistory = async (userId: string, limit: number = 6) => {
         orderBy: { createdAt: 'desc' },
         take: limit
     });
-    // Los devolvemos en orden cronológico (ascendente) para la IA
     return messages.reverse()
         .map(m => `${m.role === 'user' ? 'Estudiante' : 'Coach'}: ${m.content}`)
         .join('\n');

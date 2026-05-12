@@ -1,75 +1,84 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
 import { env } from "@config/env";
-import { TutorFeedback } from "@interfaces/tutor.interface";
+import { TutorFeedbackV3 } from "@interfaces/tutor.interface";
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-// Usamos Gemini 2.5 Flash ya que la API Key actual no soporta modelos 1.5
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+// CONFIGURACIÓN DE MODELO V3 (Optimizada para Latencia)
+const SYSTEM_INSTRUCTION = `You are an elite, concise English coach for Spanish speakers.
+
+OUTPUT CONTRACT (violating ANY rule invalidates the response):
+- Respond ONLY with valid JSON. No markdown fences, no extra text outside JSON.
+- coach_comment: 1 sentence in Spanish, MAX 20 words. NO flattery ("me encanta", "gran paso"). Be direct and honest.
+- follow_up: Question in English, MAX 15 words. Forces student to practice today's key error.
+- key_error: The ONE error that most damaged communication. NOT cosmetic errors.
+- key_error.pattern: Grammatical rule in Spanish. MAX 12 words. Short = memorable.
+- key_error.your_case: Use the student's EXACT words. Format: "their_word→fix | their_word→fix"
+- minor_errors: MAX 2 items. Only (what, fix) pairs. Zero explanations.
+- If student spoke well (all scores > 85): minor_errors = [], acknowledge briefly in coach_comment.
+- scores: Calibrated integers 0-100. A1 student with errors → 40-60, NOT 75+. Be honest.
+- Do not invent errors that were not in the audio.`;
+
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-2.5-flash",
+  systemInstruction: SYSTEM_INSTRUCTION,
+  generationConfig: {
+    // TAREA 10.1: Desactivar reasoning tokens para ganar ~30s de latencia
+    // @ts-ignore - 'thinkingConfig' existe en la API pero puede no estar en los tipos locales aún
+    thinkingConfig: { thinkingBudget: 0 }
+  }
+});
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-export const analyzeVoiceAndProvideFeedback = async (mp3FilePath: string, userName: string = "Estudiante", history: string = ""): Promise<TutorFeedback> => {
-  const audioData = Buffer.from(fs.readFileSync(mp3FilePath)).toString("base64");
+/**
+ * TAREA 10.4: Constructor de prompt dinámico
+ */
+const buildUserPrompt = (userName: string, level: string, history: string): string => `
+Student: ${userName} | Current Level: ${level}
+Recent context: ${history || "First interaction today."}
 
-  const prompt = `
-    Act as a professional and ultra-personalized English Voice Coach for Spanish speakers. 
-    Your goal is to have a NATURAL conversation with the student while teaching them.
+Analyze the audio and return exactly this JSON structure:
+{
+  "original_transcript": "...",
+  "corrected_version": "...",
+  "key_error": {
+    "what": "...",
+    "fix": "...",
+    "pattern": "...",
+    "your_case": "..."
+  },
+  "minor_errors": [
+    { "what": "...", "fix": "..." }
+  ],
+  "coach_comment": "...",
+  "follow_up": "...",
+  "follow_up_es": "...",
+  "scores": { "grammar": 0, "pronunciation": 0, "fluency": 0, "vocabulary": 0 },
+  "cefr": "A1"
+}`;
 
-    ANALYSIS RULES:
-    1. Analyze the audio provided.
-    2. Transcription and corrected version MUST be in English.
-    3. THE CORE OF YOUR RESPONSE: "explanation", "rule", "tip", "encouragement_message" and "follow_up_question" MUST be in SPANISH.
-    4. "follow_up_question": ALWAYS end with a natural follow-up question in ENGLISH.
-    5. "follow_up_translation": Provide the Spanish translation of the follow_up_question.
-    6. "grammar_errors": For EACH error, provide:
-       - "rule": A very simple grammatical rule in Spanish.
-       - "examples": 2 extra pairs of correct/incorrect examples related to that specific error.
-    7. "estimated_cefr_level": Evaluate the student's current level (A1, A2, B1, B2, C1, C2).
-
-    CONTEXT:
-    The student's name is user_name_placeholder. 
-    Previous conversation history (if any): history_placeholder.
-
-    RESPONSE FORMAT (STRICT JSON):
-    {
-      "original_transcript": "...",
-      "corrected_version": "...",
-      "corrected_version_translation": "Traducción al español de la corrección",
-      "grammar_errors": [
-        {
-          "error": "...",
-          "correction": "...",
-          "explanation": "...",
-          "rule": "...",
-          "examples": [{"correct": "...", "incorrect": "..."}]
-        }
-      ],
-      "pronunciation_tips": [{"word": "...", "ipa": "...", "tip": "..."}],
-      "grammar_score": 0-100,
-      "pronunciation_score": 0-100,
-      "fluency_score": 0-100,
-      "vocabulary_score": 0-100,
-      "score_justifications": {"grammar": "...", "pronunciation": "...", "fluency": "...", "vocabulary": "..."},
-      "encouragement_message": "...",
-      "follow_up_question": "...",
-      "follow_up_translation": "...",
-      "estimated_cefr_level": "A1-C2"
-    }
-  `;
-
-  const finalPrompt = prompt
-    .replace("user_name_placeholder", userName)
-    .replace("history_placeholder", history || "No hay historial previo. Comienza una conversación desde cero.");
+export const analyzeVoiceAndProvideFeedback = async (
+  mp3FilePath: string, 
+  userName: string = "Estudiante", 
+  level: string = "A1",
+  history: string = ""
+): Promise<TutorFeedbackV3> => {
+  
+  // TAREA 10.2: Lectura asíncrona para no bloquear el event loop
+  const audioBuffer = await fs.promises.readFile(mp3FilePath);
+  const audioData = audioBuffer.toString("base64");
 
   let lastError: any;
-  const maxRetries = 3;
+  const maxRetries = 2; // Reducimos reintentos para no acumular latencia en fallos
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`📡 Intento ${i + 1} de comunicación con Gemini 3 (V2 Conversacional)...`);
+      console.log(`📡 Inferencia V3 (Thinking: 0) - Intento ${i + 1}...`);
+      
       const result = await model.generateContent([
-        finalPrompt,
+        buildUserPrompt(userName, level, history),
         {
           inlineData: {
             data: audioData,
@@ -79,35 +88,30 @@ export const analyzeVoiceAndProvideFeedback = async (mp3FilePath: string, userNa
       ]);
     
       const responseText = result.response.text();
-      console.log("=== DEBUG: Respuesta bruta de Gemini ===");
-      console.log(responseText);
-      console.log("========================================");
       
+      // Limpieza robusta de JSON
       const firstBracket = responseText.indexOf('{');
       const lastBracket = responseText.lastIndexOf('}');
 
       if (firstBracket === -1 || lastBracket === -1) {
-        throw new Error("La IA no devolvió un formato JSON válido.");
+        throw new Error("Invalid JSON from Gemini");
       }
 
       const jsonString = responseText.substring(firstBracket, lastBracket + 1);
-      return JSON.parse(jsonString) as TutorFeedback;
+      return JSON.parse(jsonString) as TutorFeedbackV3;
 
     } catch (error: any) {
       lastError = error;
-      // Si es un error de saturación (503), esperamos y reintentamos
       if (error.status === 503 || error.message?.includes("503")) {
-        console.warn(`⚠️ Servidor saturado (503). Reintentando en ${2000 * (i + 1)}ms...`);
-        await delay(2000 * (i + 1));
+        console.warn(`⚠️ 503 Overloaded. Retry in ${1000 * (i + 1)}ms...`);
+        await delay(1000 * (i + 1));
         continue;
       }
-      // Si es otro error, lanzamos de una vez
       break;
     }
   }
 
-  console.error("❌ Error definitivo en Gemini AI Service:", lastError);
-  throw new Error("No se pudo procesar el audio con Gemini tras varios intentos");
+  throw new Error(`AI Process failed: ${lastError?.message}`);
 };
 
 /**
@@ -116,24 +120,16 @@ export const analyzeVoiceAndProvideFeedback = async (mp3FilePath: string, userNa
 export const generateAIChallenge = async (userName: string, level: string, weakPoints: string[]): Promise<string> => {
   try {
     const prompt = `
-      Act as a professional and proactive English Voice Coach. 
-      Create a highly personalized "Real-World Situation" challenge for your student ${userName} (Level: ${level}).
-      Their current weak points are: ${weakPoints.length > 0 ? weakPoints.join(', ') : 'beginner basics'}.
+      Create a 1-sentence English practice challenge for ${userName} (Level: ${level}).
+      Focus: ${weakPoints.length > 0 ? weakPoints.join(', ') : 'Daily life'}.
       
-      GOAL:
-      Initiate a conversation by putting the student in a real situation (e.g., at a restaurant, job interview, traveling) where they MUST practice their weak points.
-      Ask them a direct question to start the roleplay.
-      
-      OUTPUT RULES:
-      - Language: SPANISH (but instructions/questions can be in English if needed).
-      - Style: Natural, encouraging, like a personal tutor.
-      - Max 250 characters.
-      - Use "Tú" (informal Spanish).
+      Format:
+      1 sentence in Spanish explaining the challenge + 1 direct question in English.
+      Max 180 characters total. No flattery.
     `;
 
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text().trim();
+    return result.response.text().trim();
   } catch (error) {
     console.error("Error generating AI challenge:", error);
     return `🚀 RETO: ¡Es hora de practicar! Cuéntame qué hiciste hoy en 10 segundos.`;
