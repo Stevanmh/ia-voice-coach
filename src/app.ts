@@ -7,6 +7,8 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { env } from '@config/env';
 import { setupTelegramRoutes } from '@controllers/telegram.controller';
 import { sendDailyChallenges, consolidateDailyMemories } from '@services/challenge.service';
+import { EmbeddingService } from '@services/embedding.service';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const bot = new Telegraf(env.BOT_TOKEN);
 
@@ -52,7 +54,7 @@ wss.on('connection', async (ws, req) => {
             const memories = await EmbeddingService.findRelevant(userId, "General English progress");
             if (memories.length > 0) {
                 historicalContext = "\n\nRELEVANT MEMORIES OF THE STUDENT:\n" + 
-                    memories.map(m => `- ${m.content}`).join('\n');
+                    memories.map((m: any) => `- ${m.content}`).join('\n');
             }
         } catch (e) {
             console.error("❌ [Memory Error]:", e);
