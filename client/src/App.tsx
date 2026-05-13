@@ -32,7 +32,10 @@ function App() {
     }
   }, [])
 
-  // Algoritmo de reproducción fluida (encolamiento de chunks)
+  // Referencia para el reloj de sincronización
+  const nextStartTimeRef = useRef<number>(0);
+
+  // Algoritmo de reproducción fluida (Continuous Scheduling)
   const playNextInStack = () => {
     if (audioStack.current.length === 0 || !playbackContextRef.current) {
       isPlayingRef.current = false;
@@ -42,22 +45,36 @@ function App() {
     const pcmData = audioStack.current.shift()!;
     
     try {
-      // Gemini responde habitualmente a 24kHz en modalidad AUDIO
       const audioBuffer = playbackContextRef.current.createBuffer(1, pcmData.length, 24000);
       audioBuffer.getChannelData(0).set(pcmData);
       
       const source = playbackContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(playbackContextRef.current.destination);
+
+      // Sincronización con el reloj del hardware
+      const now = playbackContextRef.current.currentTime;
+      if (nextStartTimeRef.current < now) {
+        nextStartTimeRef.current = now + 0.05; // Pequeño buffer inicial
+      }
+
+      source.start(nextStartTimeRef.current);
+      
+      // Calculamos cuándo terminará este trozo exactamente
+      nextStartTimeRef.current += audioBuffer.duration;
+
       source.onended = () => {
-        currentSourceRef.current = null;
-        playNextInStack();
+        if (audioStack.current.length > 0) {
+          playNextInStack();
+        } else {
+          isPlayingRef.current = false;
+        }
       };
+      
       currentSourceRef.current = source;
-      source.start();
     } catch (e) {
-      console.error("Error reproduciendo fragmento de voz de la IA:", e);
-      playNextInStack(); // Continuar con el siguiente si este falla
+      console.error("Error en Precise Scheduling:", e);
+      isPlayingRef.current = false;
     }
   };
 
