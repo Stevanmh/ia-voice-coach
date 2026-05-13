@@ -6,20 +6,20 @@ RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copiamos manifiestos de configuración
+# Copiamos manifiestos de configuración del servidor
 COPY package*.json tsconfig.json ./
-
-# Instalamos TODAS las dependencias (necesarias para compilar TypeScript)
 RUN npm install
 
-# Copiamos el código fuente y el esquema de base de datos
+# --- COMPILACIÓN DEL FRONTEND (Mini App) ---
+COPY client/package*.json ./client/
+RUN cd client && npm install
+COPY client/ ./client/
+RUN cd client && npm run build
+
+# --- COMPILACIÓN DEL BACKEND ---
 COPY src ./src
 COPY prisma ./prisma
-
-# Generamos el cliente de Prisma para Linux
 RUN npx prisma generate
-
-# Compilamos el código de TypeScript a JavaScript (crea la carpeta dist)
 RUN npm run build
 
 # Iniciamos el bot

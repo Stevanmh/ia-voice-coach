@@ -1,6 +1,8 @@
 import { Telegraf } from 'telegraf';
 import cron from 'node-cron';
 import http from 'http';
+import express from 'express';
+import path from 'path';
 import WebSocket, { WebSocketServer } from 'ws';
 import { env } from '@config/env';
 import { setupTelegramRoutes } from '@controllers/telegram.controller';
@@ -28,8 +30,12 @@ bot.telegram.setMyCommands([
     { command: 'start', description: '🤖 Reiniciar el bot' }
 ]).catch(err => console.error('Error configurando menú:', err));
 
+// --- CONFIGURACIÓN WEB (Mini App) ---
+const app = express();
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
 // --- FASE 11: INFRAESTRUCTURA WEBSOCKET + GEMINI LIVE PROXY ---
-const server = http.createServer();
+const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', async (ws, req) => {
