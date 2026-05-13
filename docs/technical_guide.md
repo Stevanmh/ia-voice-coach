@@ -1,43 +1,93 @@
-# Technical Guide: AI English Voice Coach
+# 🏛️ Senior Technical Architecture: AI English Voice Coach
 
-## 🎯 Objetivo Técnico
-Desarrollar un sistema de tutoría lingüística asíncrono y proactivo, basado en arquitectura de microservicios lógicos. El sistema procesa inputs de voz nativos, realiza inferencia multimodal mediante LLMs para generar evaluaciones estructuradas, y mantiene la persistencia del estado cognitivo del usuario para adaptar dinámicamente la dificultad (CEFR).
+Esta guía documenta la infraestructura completa del sistema, diseñada para asegurar la escalabilidad, el mantenimiento y la comprensión profunda de cada decisión arquitectónica.
 
-## 🏗️ Arquitectura de Procesamiento (Pipeline)
+## 1. Visión General del Sistema
+El sistema es un ecosistema multimodal diseñado para la enseñanza del idioma inglés, aprovechando la baja latencia de la Gemini 3.1 Live API para interacciones de voz y la persistencia de una base de datos vectorial para el aprendizaje continuo.
 
-El sistema implementa un pipeline de datos lineal y no bloqueante para el procesamiento de medios:
-1. **Ingesta:** Recepción de audio nativo de Telegram (`.oga`).
-2. **Transcodificación (FFmpeg):** Normalización de la onda de audio a `.mp3` (Mono, 16kHz) optimizado para latencia en modelos neuronales.
-3. **Inferencia Multimodal (Gemini):** Análisis directo de la onda de sonido y texto en una sola pasada.
-4. **Persistencia (Prisma):** Inserción transaccional de métricas y metadatos.
-5. **Feedback Loop (TTS):** Síntesis de voz para corrección en shadowing.
+## 2. Diagrama de Arquitectura (Flujo de Datos)
 
-## 🧩 Módulos Core del Sistema
+```mermaid
+graph TD
+    subgraph "Interfaces de Usuario"
+        TGB[Telegram Bot - Async]
+        TMA[Telegram Mini App - Sync]
+    end
 
-### 1. Audio Processing Engine (FFmpeg)
-Maneja la conversión de los códecs propietarios de Telegram. Se definió una tasa de muestreo de 16kHz en un solo canal (Mono) como estándar arquitectónico. Esto reduce el tamaño del payload enviado a la API de IA en un 70% sin perder fidelidad fonética, mitigando cuellos de botella en red.
+    subgraph "Backend (Node.js/Express/WS)"
+        Proxy[WebSocket Proxy]
+        TGC[Telegram Controller]
+        AIS[AI Service]
+        EMS[Embedding Service]
+    end
 
-### 2. Cognitive Engine & Prompt Engineering (Gemini 3.1 Flash)
-En lugar de depender de una arquitectura en cascada clásica (STT -> LLM), el sistema utiliza inferencia multimodal nativa.
-*   **Zero-Shot JSON Schema:** Se implementó un *system prompt* estricto que obliga a la IA a devolver un árbol JSON validable en runtime.
-*   **Chat Memory Injector:** El módulo hidrata el prompt con los últimos N mensajes de la sesión actual, dotando al LLM de persistencia de contexto conversacional real.
+    subgraph "Capa de Inteligencia (Google Gemini)"
+        LiveAPI[Gemini 3.1 Flash Live]
+        Flash[Gemini 1.5 Flash - Analysis]
+        Embed[text-embedding-004]
+    end
 
-### 3. Persistence & State Layer (Prisma + Supabase)
-Diseño de base de datos relacional orientada a eventos de aprendizaje.
-*   **Seguimiento Granular:** Se almacenan vectores de puntuación independientes (Gramática, Pronunciación, Fluidez, Vocabulario).
-*   **WeakPoint Algorithm:** Motor estadístico que identifica y agrupa patrones de error sintáctico o fonético para ser explotados en el futuro.
+    subgraph "Persistencia (Supabase)"
+        DB[(PostgreSQL + pgvector)]
+    end
 
-### 4. Proactive Orchestration (Cron Engine)
-Transición de un bot reactivo a un sistema proactivo. Un daemon (`node-cron`) barre la base de datos para recuperar perfiles inactivos y `WeakPoints`, inyectándolos en Gemini para generar y emitir retos conversacionales (Roleplay) no solicitados, aumentando el *engagement* del usuario.
-
-## 📈 Sistema de Evaluación Dinámica (CEFR)
-El motor calibra la dificultad de sus respuestas evaluando la desviación estándar del progreso del alumno, ajustando dinámicamente la variable **CEFR** (Common European Framework of Reference) desde A1 hasta C2 de forma autónoma en la base de datos.
-
-## 🐳 Estrategia de Despliegue (Contenedorización)
-Para garantizar la inmutabilidad de la infraestructura y resolver la dependencia binaria de FFmpeg en el sistema host, el proyecto está completamente dockerizado.
-*   **Base Image:** `node:20-slim` (Minimiza superficie de ataque).
-*   **Integración de SO:** Instalación de dependencias C++ y códecs de audio en tiempo de construcción del contenedor.
-*   **Volume Mapping:** Aislamiento de la carpeta de procesamiento temporal (`/temp`) hacia el host para prevenir *memory leaks* y saturación del contenedor de aplicación.
+    TMA <--> Proxy
+    Proxy <--> LiveAPI
+    TGB <--> TGC
+    TGC <--> AIS
+    AIS <--> Flash
+    
+    Proxy -- "Save Context" --> EMS
+    TGC -- "Save Context" --> EMS
+    EMS <--> Embed
+    EMS <--> DB
+```
 
 ---
-*Documentación de Arquitectura de Software - Revisión: Fase 9 (Producción).*
+
+## 3. Módulos y Componentes
+
+### 3.1. WebSocket Proxy (`src/app.ts`)
+**Definición:** Actúa como un puente (Bridge) bidireccional entre el navegador del usuario y los servidores de Google.
+- **Por qué se usa:** Google requiere firmas seguras y un protocolo WebSocket específico (BidiGenerateContent) que no debe exponerse directamente en el cliente por seguridad de la API Key.
+- **Lógica de Interrupción:** Utiliza un flag de estado para descartar paquetes de audio residuales cuando el usuario interrumpe a la IA.
+
+### 3.2. Embedding Service (`src/services/embedding.service.ts`)
+**Definición:** Motor de búsqueda semántica.
+- **Funcionamiento:** Convierte texto en vectores de 768 dimensiones.
+- **Operador <=>**: Utiliza la distancia de coseno para encontrar "ideas cercanas" en la base de datos.
+- **Justificación:** Permite que el bot tenga memoria sin necesidad de leer todo el historial cada vez (lo cual sería carísimo y lento).
+
+### 3.3. Telegram Controller (`src/controllers/telegram.controller.ts`)
+**Definición:** Orquestador de la interfaz asíncrona.
+- **Responsabilidad:** Gestiona comandos, mensajes de voz de Telegram y lanza los retos proactivos.
+
+---
+
+## 4. Decisiones de Diseño Críticas
+
+| Decisión | Justificación Técnica |
+| :--- | :--- |
+| **Protocolo PCM 16/24kHz** | El audio crudo (PCM) sin compresión reduce la latencia de procesamiento al evitar el overhead de encoding/decoding en el servidor. |
+| **RAG (Retrieval Augmented Generation)** | En lugar de entrenar un modelo, inyectamos contexto en el prompt. Es más barato, instantáneo y preciso para el historial de un usuario. |
+| **Arquitectura de Micro-Servicios en un Monolito** | Aunque el código es uno solo, los servicios están desacoplados para que mañana el `EmbeddingService` pueda ser un microservicio independiente. |
+
+---
+
+## 5. Seguridad y Escalabilidad
+- **Variables de Entorno**: Centralizadas en `src/config/env.ts` usando **Zod** para validación en tiempo de compilación. No se permite arrancar el sistema si falta una llave.
+- **Pool de Conexiones**: Prisma gestiona la saturación de conexiones a Supabase para evitar caídas en picos de tráfico.
+
+## 6. Motor de Aprendizaje (Post-Session Analysis)
+Al finalizar cada interacción (voz o texto), el sistema ejecuta una "Reflexión Pedagógica":
+1. Recopila la transcripción.
+2. Solicita a Gemini 1.5 Flash un análisis de errores.
+3. El resultado se vectoriza y se guarda.
+*Este proceso es asíncrono para no bloquear la experiencia del usuario.*
+
+---
+
+## 7. Glosario para el Arquitecto
+- **Latency (Latencia)**: Tiempo que tarda un paquete de audio en ir y volver. Nuestra meta es <500ms.
+- **Cosine Similarity**: Medida matemática de qué tan parecidos son dos vectores.
+- **Handshake**: El proceso inicial de conexión donde se validan credenciales y se configura el modelo.

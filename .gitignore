@@ -37,3 +37,18 @@ list_models.js
 docs/*
 # Guía Técnica Profesional (Pública)
 !docs/technical_guide.md
+
+# Multimedia suelta (Seguridad ante fallos de limpieza)
+*.mp3
+*.oga
+*.wav
+*.pcm
+*.base64
+
+# Frontend (Vite/React)
+client/dist/
+client/node_modules/
+client/.env.local
+client/.env.development.local
+client/.env.test.local
+client/.env.production.local

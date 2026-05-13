@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
 import { env } from "@config/env";
 import { TutorFeedbackV3 } from "@interfaces/tutor.interface";
+import { EmbeddingService } from "./embedding.service";
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
@@ -37,8 +38,8 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
  * TAREA 10.4: Constructor de prompt dinámico
  */
 const buildUserPrompt = (userName: string, level: string, history: string): string => `
-Student: ${userName} | Current Level: ${level}
-Recent context: ${history || "First interaction today."}
+Student: ${userName} | Level: ${level}
+${history ? `PAST CONTEXT & ERRORS TO WATCH:\n${history}` : "First interaction today."}
 
 Analyze the audio and return exactly this JSON structure:
 {
@@ -62,25 +63,36 @@ Analyze the audio and return exactly this JSON structure:
 }`;
 
 export const analyzeVoiceAndProvideFeedback = async (
+  userId: string,
   mp3FilePath: string, 
-  userName: string = "Estudiante", 
-  level: string = "A1",
-  history: string = ""
+  userName: string, 
+  level: string = "A1"
 ): Promise<TutorFeedbackV3> => {
   
-  // TAREA 10.2: Lectura asíncrona para no bloquear el event loop
+  // 1. Recuperar contexto histórico del usuario (RAG)
+  let historicalContext = "";
+  try {
+    const memories = await EmbeddingService.findRelevant(userId, "General English progress and common mistakes");
+    if (memories.length > 0) {
+      historicalContext = memories.map(m => m.content).join('\n');
+    }
+  } catch (e) {
+    console.warn("⚠️ [RAG Warning]: No se pudieron cargar memorias.", e);
+  }
+
+  // 2. Lectura asíncrona del audio
   const audioBuffer = await fs.promises.readFile(mp3FilePath);
   const audioData = audioBuffer.toString("base64");
 
   let lastError: any;
-  const maxRetries = 2; // Reducimos reintentos para no acumular latencia en fallos
+  const maxRetries = 2;
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       console.log(`📡 Inferencia V3 (Thinking: 0) - Intento ${i + 1}...`);
       
       const result = await model.generateContent([
-        buildUserPrompt(userName, level, history),
+        buildUserPrompt(userName, level, historicalContext),
         {
           inlineData: {
             data: audioData,

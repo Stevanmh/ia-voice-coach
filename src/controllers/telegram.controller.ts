@@ -120,20 +120,19 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
     const initialMsg = await ctx.reply('⏳ Escuchando y analizando tu voz...');
     
     try {
-        // 1. Obtener usuario e historial
+        // 1. Obtener usuario
         const user = await getOrCreateUser(from.id.toString(), from.first_name);
-        const chatHistory = await getChatHistory(user.id);
 
         // 2. Procesar audio (Descarga y Conversión)
         const fileLink = await ctx.telegram.getFileLink(voiceMsg.file_id);
         const finalMp3Path = await downloadAndConvertAudio(fileLink, voiceMsg.file_id);
         
-        // 3. Inferencia V3 (Thinking: 0) - EL GRAN SALTO DE VELOCIDAD
+        // 3. Inferencia V3 (Thinking: 0) con RAG
         const feedback = await analyzeVoiceAndProvideFeedback(
+            user.id,
             finalMp3Path, 
             user.name || "Estudiante", 
-            user.level, 
-            chatHistory
+            user.level
         );
         
         // Detenemos el indicador de escritura ya que tenemos la respuesta

@@ -21,6 +21,17 @@ model User {
   sessions      Session[]
   weakPoints    WeakPoint[]
   messages      MessageLog[]
+  memories      Memory[]
+}
+
+model Memory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  content   String   // El insight pedagógico (ej: "Confunde since/for")
+  embedding Unsupported("vector(768)")?
+  createdAt DateTime @default(now())
 }
 
 model Session {
