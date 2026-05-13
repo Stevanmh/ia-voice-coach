@@ -61,13 +61,27 @@ function App() {
     }
   };
 
-  const handleIncomingMessage = (e: MessageEvent) => {
+  const handleIncomingMessage = async (e: MessageEvent) => {
     try {
+      // 1. Manejar datos binarios (Audio directo)
+      if (e.data instanceof Blob) {
+        if (isInterruptedRef.current) return;
+        
+        const arrayBuffer = await e.data.arrayBuffer();
+        const pcm16 = new Int16Array(arrayBuffer);
+        const float32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
+        
+        audioStack.current.push(float32);
+        if (!isPlayingRef.current) playNextInStack();
+        return;
+      }
+
+      // 2. Manejar datos de texto (JSON)
       const response = JSON.parse(e.data);
       
-      // Manejar voz de la IA
+      // Manejar voz de la IA (si viene en Base64 en lugar de binario)
       if (response.type === 'audio') {
-        // Si estamos en estado de interrupción, ignoramos los paquetes de audio residuales
         if (isInterruptedRef.current) return;
 
         const binaryString = atob(response.data);
@@ -112,7 +126,9 @@ function App() {
 
       setStatus('Conectando con el Coach...')
       const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
-      const socket = new WebSocket(`ws://localhost:3000?userId=${userId}`);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const socket = new WebSocket(`${protocol}//${host}?userId=${userId}`);
       socketRef.current = socket;
 
       socket.onopen = () => {
