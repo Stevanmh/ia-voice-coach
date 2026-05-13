@@ -82,17 +82,22 @@ wss.on('connection', async (ws, req) => {
     // Puente: Gemini -> Servidor -> Navegador
     geminiWs.on('message', (data) => {
         try {
-            const response = JSON.parse(data.toString());
+            const dataString = data.toString();
+            const response = JSON.parse(dataString);
             
-            // Acumular transcripción del Coach
+            // Acumular transcripción del Coach para la memoria nocturna
             if (response.serverContent?.modelTurn?.parts) {
-                const text = response.serverContent.modelTurn.parts.map((p: any) => p.text).join(' ');
-                if (text) sessionTranscript += `Coach: ${text}\n`;
+                const text = response.serverContent.modelTurn.parts
+                    .map((p: any) => p.text)
+                    .filter(Boolean)
+                    .join(' ');
+                if (text) sessionTranscript += `Coach: \${text}\n`;
             }
 
-            if (ws.readyState === WebSocket.OPEN) ws.send(data);
+            if (ws.readyState === WebSocket.OPEN) ws.send(dataString);
         } catch (e) {
-            if (ws.readyState === WebSocket.OPEN) ws.send(data); // Probablemente audio binario
+            // Si por alguna razón no es JSON, lo enviamos como string igualmente
+            if (ws.readyState === WebSocket.OPEN) ws.send(data.toString());
         }
     });
 

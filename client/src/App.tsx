@@ -63,46 +63,44 @@ function App() {
 
   const handleIncomingMessage = async (e: MessageEvent) => {
     try {
-      // 1. Manejar datos binarios (Audio directo)
-      if (e.data instanceof Blob) {
-        if (isInterruptedRef.current) return;
-        
-        const arrayBuffer = await e.data.arrayBuffer();
-        const pcm16 = new Int16Array(arrayBuffer);
-        const float32 = new Float32Array(pcm16.length);
-        for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
-        
-        audioStack.current.push(float32);
-        if (!isPlayingRef.current) playNextInStack();
-        return;
-      }
-
-      // 2. Manejar datos de texto (JSON)
       const response = JSON.parse(e.data);
       
-      // Manejar voz de la IA (si viene en Base64 en lugar de binario)
-      if (response.type === 'audio') {
-        if (isInterruptedRef.current) return;
+      // 1. Manejar Voz de la IA (Estructura Gemini Live)
+      const parts = response.serverContent?.modelTurn?.parts;
+      if (parts) {
+        for (const part of parts) {
+          if (part.inlineData?.data) {
+            if (isInterruptedRef.current) return;
 
-        const binaryString = atob(response.data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-        
-        const pcm16 = new Int16Array(bytes.buffer);
-        const float32 = new Float32Array(pcm16.length);
-        for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
-        
-        audioStack.current.push(float32);
-        if (!isPlayingRef.current) playNextInStack();
+            const binaryString = atob(part.inlineData.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            
+            const pcm16 = new Int16Array(bytes.buffer);
+            const float32 = new Float32Array(pcm16.length);
+            for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
+            
+            audioStack.current.push(float32);
+            if (!isPlayingRef.current) playNextInStack();
+          }
+
+          if (part.text) {
+            setTranscript(prev => (prev + ' ' + part.text).slice(-100));
+            setStatus('Coach hablando...');
+          }
+        }
       }
 
-      // Manejar transcripción o texto de la IA
+      // 2. Manejar mensajes de texto simples (si los hay)
       if (response.type === 'text') {
         setTranscript(prev => (prev + ' ' + response.data).slice(-100));
         setStatus('Coach hablando...');
       }
     } catch (err) {
-      console.error("Error procesando mensaje entrante:", err);
+      // Ignorar errores de parseo si llegan datos binarios accidentales
+      if (!(e.data instanceof Blob)) {
+        console.error("Error procesando mensaje:", err);
+      }
     }
   };
 
