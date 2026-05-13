@@ -35,14 +35,9 @@ function App() {
   // Referencia para el reloj de sincronización
   const nextStartTimeRef = useRef<number>(0);
 
-  // Algoritmo de reproducción fluida (Continuous Scheduling)
-  const playNextInStack = () => {
-    if (audioStack.current.length === 0 || !playbackContextRef.current) {
-      isPlayingRef.current = false;
-      return;
-    }
-    isPlayingRef.current = true;
-    const pcmData = audioStack.current.shift()!;
+  // Algoritmo de Streaming (Encadenamiento inmediato)
+  const scheduleAudioChunk = (pcmData: Float32Array) => {
+    if (!playbackContextRef.current) return;
     
     try {
       const audioBuffer = playbackContextRef.current.createBuffer(1, pcmData.length, 24000);
@@ -52,29 +47,21 @@ function App() {
       source.buffer = audioBuffer;
       source.connect(playbackContextRef.current.destination);
 
-      // Sincronización con el reloj del hardware
       const now = playbackContextRef.current.currentTime;
+      
+      // Si el reloj se quedó atrás, reiniciamos desde "ya mismo"
       if (nextStartTimeRef.current < now) {
-        nextStartTimeRef.current = now + 0.05; // Pequeño buffer inicial
+        nextStartTimeRef.current = now + 0.1; // 100ms de margen inicial para estabilidad
       }
 
       source.start(nextStartTimeRef.current);
       
-      // Calculamos cuándo terminará este trozo exactamente
+      // El siguiente debe empezar justo cuando este termine
       nextStartTimeRef.current += audioBuffer.duration;
-
-      source.onended = () => {
-        if (audioStack.current.length > 0) {
-          playNextInStack();
-        } else {
-          isPlayingRef.current = false;
-        }
-      };
       
       currentSourceRef.current = source;
     } catch (e) {
-      console.error("Error en Precise Scheduling:", e);
-      isPlayingRef.current = false;
+      console.error("Error en Streaming Scheduling:", e);
     }
   };
 
@@ -97,8 +84,7 @@ function App() {
             const float32 = new Float32Array(pcm16.length);
             for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
             
-            audioStack.current.push(float32);
-            if (!isPlayingRef.current) playNextInStack();
+            scheduleAudioChunk(float32);
           }
 
           if (part.text) {
