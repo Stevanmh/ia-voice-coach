@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import WebApp from '@twa-dev/sdk'
+import { CoachAvatar } from './components/CoachAvatar'
 
 function App() {
   const [isCalling, setIsCalling] = useState(false)
@@ -18,6 +19,7 @@ function App() {
   const isPlayingRef = useRef(false);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const isInterruptedRef = useRef(false);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   useEffect(() => {
     try {
@@ -45,7 +47,14 @@ function App() {
       
       const source = playbackContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
+      
+      // Conectamos directo a los parlantes para asegurar el sonido
       source.connect(playbackContextRef.current.destination);
+      
+      // Y también conectamos al analizador para el lip-sync
+      if (analyserRef.current) {
+        source.connect(analyserRef.current);
+      }
 
       const now = playbackContextRef.current.currentTime;
       
@@ -121,6 +130,29 @@ function App() {
       // Contexto de Reproducción (24kHz para la voz de la IA)
       playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
       
+      // Creamos el analizador para el lip-sync
+      const analyser = playbackContextRef.current.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+      analyser.connect(playbackContextRef.current.destination);
+
+      // Bucle para extraer volumen a 60fps
+      const updateVolume = () => {
+        if (!analyserRef.current) return;
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        (window as any).aiVolume = rms;
+        requestAnimationFrame(updateVolume);
+      };
+      updateVolume();
+      
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
@@ -128,7 +160,7 @@ function App() {
       setStatus('Conectando con el Coach...')
       const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
+      const host = import.meta.env.DEV ? '127.0.0.1:3000' : window.location.host;
       const socket = new WebSocket(`${protocol}//${host}?userId=${userId}`);
       socketRef.current = socket;
 
@@ -232,16 +264,9 @@ function App() {
         </p>
       </div>
 
-      {/* Visualizer: El "Cerebro" de la IA */}
-      <div className="relative flex items-center justify-center w-64 h-64">
-        <div className={`absolute w-full h-full rounded-full border-2 border-blue-500/20 ${isCalling ? 'animate-ping' : ''}`} />
-        <div className={`absolute w-48 h-48 rounded-full border-2 border-blue-400/40 ${isCalling ? 'animate-[ping_2s_linear_infinite]' : ''}`} />
-        
-        <div className={`z-10 w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-[0_0_50px_-12px_rgba(56,189,248,0.5)] transition-transform duration-500 ${isCalling ? 'scale-110' : 'scale-100'}`}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 016 0v6a3 3 0 01-3 3z" />
-          </svg>
-        </div>
+      {/* Visualizer: El Avatar 3D de la IA */}
+      <div className="w-full flex justify-center items-center my-4">
+        <CoachAvatar />
       </div>
 
       {/* Transcript Area: Para ver lo que la IA está diciendo */}
