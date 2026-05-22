@@ -138,20 +138,24 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     // Esto elimina la rigidez de la Pose T y simula estar sentado en un escritorio.
     if (leftArmRef.current) {
       leftArmRef.current.rotation.z = 1.15;  // Baja el brazo al costado
-      leftArmRef.current.rotation.x = -0.15; // Lo adelanta un poco hacia el escritorio
+      leftArmRef.current.rotation.y = 0.3;   // Gira el hombro un poco hacia adelante
     }
     if (rightArmRef.current) {
       rightArmRef.current.rotation.z = -1.15; 
-      rightArmRef.current.rotation.x = -0.15;
+      rightArmRef.current.rotation.y = -0.3;
     }
     
+    // El eje de flexión del codo (hinge) suele ser Z o Y en estos rigs.
+    // rotation.x suele ser solo torsión (twist) invisible.
     if (leftForeArmRef.current) {
-      leftForeArmRef.current.rotation.x = -0.4; // Dobla el codo hacia arriba
-      leftForeArmRef.current.rotation.y = 0.3;  // Gira el antebrazo hacia el centro del pecho
+      leftForeArmRef.current.rotation.z = 1.0; // Dobla el codo a ~60 grados
+      leftForeArmRef.current.rotation.x = 0;   
+      leftForeArmRef.current.rotation.y = 0;
     }
     if (rightForeArmRef.current) {
-      rightForeArmRef.current.rotation.x = -0.4;
-      rightForeArmRef.current.rotation.y = -0.3;
+      rightForeArmRef.current.rotation.z = -1.0;
+      rightForeArmRef.current.rotation.x = 0;
+      rightForeArmRef.current.rotation.y = 0;
     }
 
     // 3. Oscilación natural de cabeza/cuello (Idle sway)
