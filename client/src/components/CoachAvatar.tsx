@@ -134,12 +134,22 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
       glowRingRef.current.style.boxShadow = `0 0 ${20 + volume * 50}px rgba(99, 102, 241, ${0.15 + volume * 0.65})`;
     }
 
-    // 2. Los brazos no se manipulan matemáticamente.
-    // La solución definitiva es el encuadre: la cámara hace un "tight bust-shot"
+    // 2. La solución definitiva es el encuadre: la cámara hace un "tight bust-shot"
     // que recorta los brazos fuera del marco circular, igual que HeyGen/Synthesia.
 
     // 3. Oscilación natural de cabeza/cuello (Idle sway)
     const targetNeck = neckBoneRef.current;
+    if (leftArmRef.current) {
+      leftArmRef.current.rotation.z = 1.3; // Relajado hacia abajo
+      leftArmRef.current.rotation.x = 0;
+      leftArmRef.current.rotation.y = 0;
+    }
+    if (rightArmRef.current) {
+      rightArmRef.current.rotation.z = -1.3; 
+      rightArmRef.current.rotation.x = 0;
+      rightArmRef.current.rotation.y = 0;
+    }
+
     if (targetNeck) {
       targetNeck.rotation.y = Math.sin(time * 0.8) * 0.05;
       targetNeck.rotation.x = 0.12 + Math.cos(time * 1.1) * 0.02;
@@ -189,10 +199,9 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     }
   });
 
-  // Escalamos el modelo 1.8x: la cara queda centrada en el encuadre
-  // y los brazos quedan fuera del círculo por el overflow:hidden del contenedor.
-  // position.y = -(facePosInModel * scale) = -(1.6 * 1.8) ≈ -2.85
-  return <primitive object={scene} position={[0, -2.85, 0]} scale={1.8} />;
+  // El centro de la cara en el modelo original suele estar en y=1.55.
+  // Al mover todo el modelo a y=-1.55, la cara queda exactamente en el origen [0,0,0] del mundo 3D.
+  return <primitive object={scene} position={[0, -1.55, 0]} scale={1} />;
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
@@ -212,11 +221,11 @@ export function CoachAvatar() {
       <div className="relative w-72 h-72 rounded-full overflow-hidden border border-indigo-500/20 bg-gradient-to-b from-indigo-950/40 to-slate-950/80 shadow-[0_0_40px_rgba(99,102,241,0.15)] flex items-center justify-center">
         {/*
           ─── CÁMARA FIJA ─────────────────────────────────────────────────────
-          OrbitControls eliminado. La cámara queda estática en la posición
-          ideal de "videollamada bust-shot". La sensación de vida la dan las
-          animaciones internas: idle sway, parpadeo y lip-sync.
+          Al colocar la cámara en y=0, su línea de visión es 100% horizontal y recta hacia [0,0,0].
+          Como el modelo está en y=-1.55, su cara está en [0,0,0]. 
+          Esto garantiza un encuadre perfecto sin distorsión ni mirada baja.
         */}
-        <Canvas camera={{ position: [0, 0.25, 0.52] }}>
+        <Canvas camera={{ position: [0, 0, 0.45], fov: 45 }}>
           {/* Iluminación de estudio de 3 puntos */}
           <ambientLight intensity={0.5} color="#c7d2fe" />
           <directionalLight position={[2, 2, 2]} intensity={1.5} color="#ffffff" />
