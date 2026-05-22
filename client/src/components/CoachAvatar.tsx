@@ -199,9 +199,9 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     }
   });
 
-  // El centro de la cara en el modelo original suele estar en y=1.55.
-  // Al mover todo el modelo a y=-1.55, la cara queda exactamente en el origen [0,0,0] del mundo 3D.
-  return <primitive object={scene} position={[0, -1.55, 0]} scale={1} />;
+  // Al mover el modelo a y=-1.75, la cara queda exactamente en el origen [0,0,0] 
+  // (antes en -1.55 quedaba enfocando el cuello/pecho).
+  return <primitive object={scene} position={[0, -1.75, 0]} scale={1} />;
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
