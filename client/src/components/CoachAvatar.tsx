@@ -134,28 +134,26 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
       glowRingRef.current.style.boxShadow = `0 0 ${20 + volume * 50}px rgba(99, 102, 241, ${0.15 + volume * 0.65})`;
     }
 
-    // 2. Pose "Presenter" (Hombros relajados, codos flexionados, manos al centro)
-    // Esto elimina la rigidez de la Pose T y simula estar sentado en un escritorio.
+    // 2. Postura Relajada (Brazos descansando a los costados)
+    // En un encuadre circular de videollamada, la forma más natural y segura
+    // es simplemente dejar caer los brazos, relajando los hombros completamente.
     if (leftArmRef.current) {
-      leftArmRef.current.rotation.z = 1.15;  // Baja el brazo al costado
-      leftArmRef.current.rotation.y = 0.3;   // Gira el hombro un poco hacia adelante
+      leftArmRef.current.rotation.z = 1.4;   // Baja el brazo casi a 90 grados
+      leftArmRef.current.rotation.x = 0.1;   // Lo mueve levísimamente hacia atrás para alinear con el torso
+      leftArmRef.current.rotation.y = 0;   
     }
     if (rightArmRef.current) {
-      rightArmRef.current.rotation.z = -1.15; 
-      rightArmRef.current.rotation.y = -0.3;
+      rightArmRef.current.rotation.z = -1.4; 
+      rightArmRef.current.rotation.x = 0.1;
+      rightArmRef.current.rotation.y = 0;
     }
     
-    // El eje de flexión del codo (hinge) suele ser Z o Y en estos rigs.
-    // rotation.x suele ser solo torsión (twist) invisible.
+    // Mantenemos los antebrazos rectos y relajados hacia abajo
     if (leftForeArmRef.current) {
-      leftForeArmRef.current.rotation.z = 1.0; // Dobla el codo a ~60 grados
-      leftForeArmRef.current.rotation.x = 0;   
-      leftForeArmRef.current.rotation.y = 0;
+      leftForeArmRef.current.rotation.set(0, 0, 0);
     }
     if (rightForeArmRef.current) {
-      rightForeArmRef.current.rotation.z = -1.0;
-      rightForeArmRef.current.rotation.x = 0;
-      rightForeArmRef.current.rotation.y = 0;
+      rightForeArmRef.current.rotation.set(0, 0, 0);
     }
 
     // 3. Oscilación natural de cabeza/cuello (Idle sway)
