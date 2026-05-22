@@ -189,7 +189,10 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     }
   });
 
-  return <primitive object={scene} position={[0, -1.6, 0]} />;
+  // Escalamos el modelo 1.8x: la cara queda centrada en el encuadre
+  // y los brazos quedan fuera del círculo por el overflow:hidden del contenedor.
+  // position.y = -(facePosInModel * scale) = -(1.6 * 1.8) ≈ -2.85
+  return <primitive object={scene} position={[0, -2.85, 0]} scale={1.8} />;
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
@@ -213,7 +216,7 @@ export function CoachAvatar() {
           ideal de "videollamada bust-shot". La sensación de vida la dan las
           animaciones internas: idle sway, parpadeo y lip-sync.
         */}
-        <Canvas camera={{ position: [0, 0.25, 0.44] }}>
+        <Canvas camera={{ position: [0, 0.25, 0.52] }}>
           {/* Iluminación de estudio de 3 puntos */}
           <ambientLight intensity={0.5} color="#c7d2fe" />
           <directionalLight position={[2, 2, 2]} intensity={1.5} color="#ffffff" />
