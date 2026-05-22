@@ -147,8 +147,7 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
 
     const targetHead = headBoneRef.current;
     if (targetHead) {
-      // rotation.x = 0 para que la cabeza mire al frente, no hacia abajo
-      targetHead.rotation.x = 0;
+      targetHead.rotation.x = 0.08;
     }
 
     if (headMeshRef.current && headMeshRef.current.morphTargetInfluences) {
@@ -190,8 +189,7 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     }
   });
 
-  // El modelo se baja en Y para que la cintura/brazos queden bajo el borde del círculo.
-  return <primitive object={scene} position={[0, -1.85, 0]} />;
+  return <primitive object={scene} position={[0, -1.6, 0]} />;
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
@@ -215,13 +213,7 @@ export function CoachAvatar() {
           ideal de "videollamada bust-shot". La sensación de vida la dan las
           animaciones internas: idle sway, parpadeo y lip-sync.
         */}
-        {/*
-          Cámara en tight bust-shot. Y a nivel de la cara del modelo
-          (modelo en y=-1.85, cara en y≈-0.25 en espacio mundo).
-          La cámara apunta al origen [0,0,0] que queda levemente por
-          encima de la cara → mirada natural hacia el frente/arriba.
-        */}
-        <Canvas camera={{ position: [0, -0.2, 0.38], fov: 45 }}>
+        <Canvas camera={{ position: [0, 0.25, 0.44] }}>
           {/* Iluminación de estudio de 3 puntos */}
           <ambientLight intensity={0.5} color="#c7d2fe" />
           <directionalLight position={[2, 2, 2]} intensity={1.5} color="#ffffff" />
