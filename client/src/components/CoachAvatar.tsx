@@ -81,43 +81,42 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
   const headMeshRef = useRef<THREE.Mesh | null>(null);
   const neckBoneRef = useRef<THREE.Object3D | null>(null);
   const headBoneRef = useRef<THREE.Object3D | null>(null);
+  
+  // Referencias para la postura de Presentador
   const leftArmRef = useRef<THREE.Object3D | null>(null);
   const rightArmRef = useRef<THREE.Object3D | null>(null);
+  const leftForeArmRef = useRef<THREE.Object3D | null>(null);
+  const rightForeArmRef = useRef<THREE.Object3D | null>(null);
 
   // Controladores de parpadeo persistentes
   const blinkTimerRef = useRef(0);
   const isBlinkingRef = useRef(false);
   const blinkProgressRef = useRef(0);
 
-  // Buscamos la cabeza (mesh) y el cuello (hueso) al cargar
+  // Buscamos los huesos y mallas al cargar
   useEffect(() => {
     scene.traverse((child) => {
-      // Buscar la malla facial
+      const name = child.name.toLowerCase();
+
+      // Malla facial
       if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).morphTargetInfluences) {
-        if (child.name.includes('Head') || child.name.includes('Avatar') || child.name.includes('Face')) {
+        if (name.includes('head') || name.includes('avatar') || name.includes('face')) {
           headMeshRef.current = child as THREE.Mesh;
         }
       }
-      // Buscar el hueso del cuello para animar los movimientos de la cabeza
-      if (child.name.includes('Neck')) {
-        neckBoneRef.current = child;
-      }
-      // Buscar el hueso de la cabeza para controlar la dirección de la mirada
-      if (child.name === 'Head' && !(child as THREE.Mesh).isMesh) {
-        headBoneRef.current = child;
-      }
-      // Buscar los brazos para bajarlos de la pose T
-      if (child.name.toLowerCase().includes('leftarm') || child.name.toLowerCase().includes('leftupperarm')) {
-        leftArmRef.current = child;
-      }
-      if (child.name.toLowerCase().includes('rightarm') || child.name.toLowerCase().includes('rightupperarm')) {
-        rightArmRef.current = child;
-      }
-    });
+      
+      // Cuello y Cabeza
+      if (name.includes('neck')) neckBoneRef.current = child;
+      if (child.name === 'Head' && !(child as THREE.Mesh).isMesh) headBoneRef.current = child;
 
-    if (headMeshRef.current && headMeshRef.current.morphTargetDictionary) {
-      console.log("Avatar Morph Targets:", headMeshRef.current.morphTargetDictionary);
-    }
+      // Brazos (Evitando sobreescribir con el antebrazo que también contiene 'arm')
+      if (name.includes('leftarm') && !name.includes('fore')) leftArmRef.current = child;
+      if (name.includes('rightarm') && !name.includes('fore')) rightArmRef.current = child;
+      
+      // Antebrazos (Codos)
+      if (name.includes('leftforearm')) leftForeArmRef.current = child;
+      if (name.includes('rightforearm')) rightForeArmRef.current = child;
+    });
   }, [scene]);
 
   // Bucle de animación natural a 60fps
@@ -126,7 +125,7 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     const delta = state.clock.getDelta();
     const volume = (window as any).aiVolume || 0;
 
-    // 1. Halo de luz reactivo (Cambio directo de CSS para evitar re-renders)
+    // 1. Halo de luz reactivo
     if (glowRingRef.current) {
       const scale = 1 + volume * 0.45;
       const opacity = 0.2 + volume * 0.8;
@@ -135,12 +134,24 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
       glowRingRef.current.style.boxShadow = `0 0 ${20 + volume * 50}px rgba(99, 102, 241, ${0.15 + volume * 0.65})`;
     }
 
-    // 2. Bajar los brazos de la pose T
+    // 2. Pose "Presenter" (Hombros relajados, codos flexionados, manos al centro)
+    // Esto elimina la rigidez de la Pose T y simula estar sentado en un escritorio.
     if (leftArmRef.current) {
-      leftArmRef.current.rotation.z = 1.25;
+      leftArmRef.current.rotation.z = 1.15;  // Baja el brazo al costado
+      leftArmRef.current.rotation.x = -0.15; // Lo adelanta un poco hacia el escritorio
     }
     if (rightArmRef.current) {
-      rightArmRef.current.rotation.z = -1.25;
+      rightArmRef.current.rotation.z = -1.15; 
+      rightArmRef.current.rotation.x = -0.15;
+    }
+    
+    if (leftForeArmRef.current) {
+      leftForeArmRef.current.rotation.x = -0.4; // Dobla el codo hacia arriba
+      leftForeArmRef.current.rotation.y = 0.3;  // Gira el antebrazo hacia el centro del pecho
+    }
+    if (rightForeArmRef.current) {
+      rightForeArmRef.current.rotation.x = -0.4;
+      rightForeArmRef.current.rotation.y = -0.3;
     }
 
     // 3. Oscilación natural de cabeza/cuello (Idle sway)
