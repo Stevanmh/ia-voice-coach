@@ -134,27 +134,9 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
       glowRingRef.current.style.boxShadow = `0 0 ${20 + volume * 50}px rgba(99, 102, 241, ${0.15 + volume * 0.65})`;
     }
 
-    // 2. Postura Relajada (Brazos descansando a los costados)
-    // En un encuadre circular de videollamada, la forma más natural y segura
-    // es simplemente dejar caer los brazos, relajando los hombros completamente.
-    if (leftArmRef.current) {
-      leftArmRef.current.rotation.z = 1.4;   // Baja el brazo casi a 90 grados
-      leftArmRef.current.rotation.x = 0.1;   // Lo mueve levísimamente hacia atrás para alinear con el torso
-      leftArmRef.current.rotation.y = 0;   
-    }
-    if (rightArmRef.current) {
-      rightArmRef.current.rotation.z = -1.4; 
-      rightArmRef.current.rotation.x = 0.1;
-      rightArmRef.current.rotation.y = 0;
-    }
-    
-    // Mantenemos los antebrazos rectos y relajados hacia abajo
-    if (leftForeArmRef.current) {
-      leftForeArmRef.current.rotation.set(0, 0, 0);
-    }
-    if (rightForeArmRef.current) {
-      rightForeArmRef.current.rotation.set(0, 0, 0);
-    }
+    // 2. Los brazos no se manipulan matemáticamente.
+    // La solución definitiva es el encuadre: la cámara hace un "tight bust-shot"
+    // que recorta los brazos fuera del marco circular, igual que HeyGen/Synthesia.
 
     // 3. Oscilación natural de cabeza/cuello (Idle sway)
     const targetNeck = neckBoneRef.current;
@@ -207,7 +189,8 @@ function AvatarModel({ glowRingRef }: AvatarModelProps) {
     }
   });
 
-  return <primitive object={scene} position={[0, -1.6, 0]} />;
+  // El modelo se baja en Y para que la cintura/brazos queden bajo el borde del círculo.
+  return <primitive object={scene} position={[0, -1.85, 0]} />;
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
@@ -231,7 +214,11 @@ export function CoachAvatar() {
           ideal de "videollamada bust-shot". La sensación de vida la dan las
           animaciones internas: idle sway, parpadeo y lip-sync.
         */}
-        <Canvas camera={{ position: [0, 0.25, 0.52] }}>
+        {/*
+          Cámara en tight bust-shot (z reducido = más zoom).
+          Subimos ligeramente el Y para centrar la cara en el encuadre.
+        */}
+        <Canvas camera={{ position: [0, 0.3, 0.38], fov: 45 }}>
           {/* Iluminación de estudio de 3 puntos */}
           <ambientLight intensity={0.5} color="#c7d2fe" />
           <directionalLight position={[2, 2, 2]} intensity={1.5} color="#ffffff" />
