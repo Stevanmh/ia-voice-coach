@@ -244,7 +244,14 @@ wss.on('connection', async (ws, req) => {
         }
     });
 
-    geminiWs.on('close', () => { if (ws.readyState === WebSocket.OPEN) ws.close(); });
+    geminiWs.on('close', (code, reason) => { 
+        console.log(`Gemini WS Closed: ${code} ${reason}`);
+        if (ws.readyState === WebSocket.OPEN) ws.close(); 
+    });
+
+    geminiWs.on('error', (err) => {
+        console.error("❌ Gemini WS Error:", err);
+    });
 });
 
 
