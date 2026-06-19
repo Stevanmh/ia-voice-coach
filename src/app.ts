@@ -77,10 +77,15 @@ app.post('/api/user/:userId/mode', async (req, res) => {
 });
 
 // OPTIMIZACIÓN: Caché de 1 año para assets estáticos del cliente
-// El GLB del avatar se descarga una vez y queda cacheado en el navegador.
+// PERO index.html NUNCA debe cachearse para asegurar que siempre cargue la última versión
 app.use(express.static(path.join(__dirname, '../client/dist'), {
-    maxAge: '1y',
-    immutable: true,
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+        } else {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+    }
 }));
 
 // --- FASE 11: INFRAESTRUCTURA WEBSOCKET + GEMINI LIVE PROXY ---
