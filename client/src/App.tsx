@@ -57,6 +57,9 @@ function App() {
   const silenceFramesRef = useRef<number>(0);
   const silenceCooldownRef = useRef<boolean>(false);
 
+  // FASE 17: Ref para la velocidad de reproducción (actualizada por el slider)
+  const playbackSpeedRef = useRef<number>(1.0);
+
   useEffect(() => {
     try {
       WebApp.expand();
@@ -98,14 +101,8 @@ function App() {
       const source = playbackContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       
-      // Velocidad adaptativa según nivel CEFR o slider
-      // Le pasamos el valor que dicte el slider en tiempo real (si el usuario lo movió)
-      // O el base si acaba de empezar. Como no tenemos referencia directa al slider en el DOM fácil,
-      // la forma más reactiva es leer el valor default del SPEED_MAP para nuevos chunks, 
-      // pero el slider actualizará currentSourceRef si está sonando.
-      // Mejor aún, le daremos la velocidad por defecto si nadie la toca.
-      const speed = SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0;
-      source.playbackRate.value = speed;
+      // Velocidad adaptativa: usa la ref que se actualiza en tiempo real con el slider
+      source.playbackRate.value = playbackSpeedRef.current;
       
       // Conectamos directo a los parlantes para asegurar el sonido
       source.connect(playbackContextRef.current.destination);
@@ -232,6 +229,8 @@ function App() {
       socket.onopen = () => {
         setIsCalling(true);
         setStatus('En línea - ¡Te escucho!');
+        // Inicializar la velocidad de reproducción según el nivel del usuario
+        playbackSpeedRef.current = SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0;
         
         source.connect(processor);
         processor.connect(audioContext.destination);
@@ -461,6 +460,9 @@ function App() {
           className="flex-1 accent-blue-500"
           onChange={(e) => {
             const val = parseFloat(e.target.value);
+            // Actualizar la ref para que los próximos chunks de audio usen esta velocidad
+            playbackSpeedRef.current = val;
+            // También actualizar el chunk en reproducción actual si existe
             if (currentSourceRef.current) {
               currentSourceRef.current.playbackRate.value = val;
             }
