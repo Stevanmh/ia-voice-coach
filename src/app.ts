@@ -149,7 +149,7 @@ wss.on('connection', async (ws, req) => {
             
         const setupMessage = {
             setup: {
-                model: "models/gemini-2.0-flash-exp",
+                model: "models/gemini-2.0-flash",
                 generationConfig: { responseModalities: ["AUDIO"] },
                 systemInstruction: {
                     parts: [{ text: sysInstText }]
