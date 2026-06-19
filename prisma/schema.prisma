@@ -22,6 +22,11 @@ model User {
   weakPoints    WeakPoint[]
   messages      MessageLog[]
   memories      Memory[]
+  vocabularies  Vocabulary[]
+  
+  currentTopic    String?
+  completedTopics String[] @default([])
+  mode            String   @default("conversation") // "conversation" o "shadowing"
 }
 
 model Memory {
@@ -69,4 +74,21 @@ model MessageLog {
   role      String   // 'user' o 'model'
   content   String   // El contenido del mensaje
   createdAt DateTime @default(now())
+}
+
+model Vocabulary {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  word        String   // The word or phrase in English
+  translation String   // Spanish translation or meaning
+  status      String   @default("learning") // 'learning', 'reviewing', 'mastered'
+  nextReview  DateTime @default(now())
+  interval    Int      @default(1) // Days until next review
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, word])
 }

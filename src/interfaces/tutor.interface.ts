@@ -42,5 +42,30 @@ export interface TutorFeedbackV3 {
     vocabulary:    number;  // 0-100
   };
 
+  // FASE 19: SPURRED REPETITION - Vocabulario nuevo a aprender
+  new_vocabulary: Array<{
+    word: string;     // Palabra o phrasal verb en inglés que debió usar
+    meaning: string;  // Significado en español
+  }>;
+
+  // FASE 20: SPANGLISH DETECTION
+  spanglish_used: Array<{
+    spanish: string;  // Palabra que usó en español
+    english: string;  // Su equivalente en inglés
+  }>;
+
+  // FASE 21: CURRICULUM MASTERY
+  topic_mastered: boolean; // True si el Coach detecta que ya dominas el currentTopic actual
+
   cefr: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+}
+
+// FASE 23: SHADOWING FEEDBACK
+export interface ShadowingFeedback {
+  original_transcript: string; // Lo que el usuario dijo
+  pronunciation_score: number; // 0-100
+  feedback_es:         string; // Qué falló (ej: "Pronunciaste 'sheet' como 'shit', alarga la 'i'.")
+  passed:              boolean; // Si superó la prueba (>85)
+  next_phrase:         string; // La siguiente frase a repetir generada con Opción C
+  next_phrase_es:      string; // Traducción de la frase
 }

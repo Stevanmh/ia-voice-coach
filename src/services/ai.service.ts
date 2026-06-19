@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
 import { env } from "@config/env";
-import { TutorFeedbackV3 } from "@interfaces/tutor.interface";
+import { TutorFeedbackV3, ShadowingFeedback } from "@interfaces/tutor.interface";
 import { EmbeddingService } from "./embedding.service";
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -17,6 +17,8 @@ OUTPUT CONTRACT (violating ANY rule invalidates the response):
 - key_error.pattern: Grammatical rule in Spanish. MAX 12 words. Short = memorable.
 - key_error.your_case: Use the student's EXACT words. Format: "their_word→fix | their_word→fix"
 - minor_errors: MAX 2 items. Only (what, fix) pairs. Zero explanations.
+- new_vocabulary: MAX 2 items. Be PROACTIVE. If they use basic words (e.g. "very big"), suggest better ones ("massive", "huge"). Format: { "word": "English word", "meaning": "Spanish translation" }.
+- SPANGLISH / CODE-SWITCHING RULE: If the student uses Spanish words mid-sentence (e.g. "the tienda"), do NOT treat them as pronunciation errors. List them in "spanglish_used". coach_comment should be EMPATHETIC: "No sabes la palabra aún, ¡es normal!". Add them to new_vocabulary.
 - If student spoke well (all scores > 85): minor_errors = [], acknowledge briefly in coach_comment.
 - scores: Calibrated integers 0-100. A1 student with errors → 40-60, NOT 75+. Be honest.
 - Do not invent errors that were not in the audio.`;
@@ -35,11 +37,17 @@ const model = genAI.getGenerativeModel({
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
- * TAREA 10.4: Constructor de prompt dinámico
+ * TAREA 10.4 / FASE 19, 20 & 21: Constructor de prompt dinámico
  */
-const buildUserPrompt = (userName: string, level: string, history: string): string => `
+const buildUserPrompt = (userName: string, level: string, history: string, wordsToReview: string[] = [], lastQuestion: string | null = null, activeTopic: any = null): string => `
 Student: ${userName} | Level: ${level}
 ${history ? `PAST CONTEXT & ERRORS TO WATCH:\n${history}` : "First interaction today."}
+
+${lastQuestion ? `PREVIOUS SESSION BRIDGE: Last time, you asked the student: "${lastQuestion}". If their audio seems to be answering this, acknowledge it naturally in your coach_comment.` : ""}
+${wordsToReview.length > 0 ? `\n🔥 SPACED REPETITION TARGETS: The student MUST practice these words today: [${wordsToReview.join(', ')}]. \nCRITICAL: Craft your 'follow_up' question specifically so the natural answer requires using one of these words.` : ""}
+${activeTopic ? `\n🎯 CURRICULUM FOCUS: The student is currently practicing: "${activeTopic.title}" (${activeTopic.description}).
+CRITICAL (FLEXIBLE CURRICULUM): Guide your follow_up question toward this topic. However, if the user's audio is clearly talking about something else important to them, follow their lead empathetically and ignore the curriculum for this turn.
+If they DO practice the topic and demonstrate competence, set "topic_mastered": true.` : ""}
 
 Analyze the audio and return exactly this JSON structure:
 {
@@ -55,6 +63,13 @@ Analyze the audio and return exactly this JSON structure:
   "minor_errors": [
     { "what": "...", "fix": "..." }
   ],
+  "new_vocabulary": [
+    { "word": "...", "meaning": "..." }
+  ],
+  "spanglish_used": [
+    { "spanish": "...", "english": "..." }
+  ],
+  "topic_mastered": false,
   "coach_comment": "...",
   "follow_up": "...",
   "follow_up_es": "...",
@@ -62,12 +77,43 @@ Analyze the audio and return exactly this JSON structure:
   "cefr": "A1"
 }`;
 
+// FASE 23: Constructor de prompt para Shadowing Mode (Opción C)
+const buildShadowingPrompt = (userName: string, targetPhrase: string, historicalContext: string): string => `
+Student: ${userName}
+MODE: SHADOWING / PRONUNCIATION DRILL
+TARGET PHRASE THEY ARE TRYING TO SAY: "${targetPhrase}"
+
+${historicalContext ? `PAST CONTEXT & WEAK POINTS:\n${historicalContext}` : ""}
+
+INSTRUCTIONS:
+1. DO NOT evaluate grammar. ONLY evaluate their pronunciation of the TARGET PHRASE.
+2. Calculate a pronunciation_score from 0 to 100.
+3. If score < 85, passed = false. feedback_es MUST tell them exactly what sound they failed (e.g. "Dijiste 'shit' en vez de 'sheet'. Alarga la 'i'.").
+4. If score >= 85, passed = true. feedback_es MUST congratulate them.
+5. GENERATE NEXT PHRASE (Opción C): Look at their WEAK POINTS in the context. Generate a new, native, movie-like idiom/phrase that contains a grammar rule or word they struggle with. 
+
+Analyze the audio and return exactly this JSON structure:
+{
+  "original_transcript": "...",
+  "pronunciation_score": 0,
+  "feedback_es": "...",
+  "passed": false,
+  "next_phrase": "...",
+  "next_phrase_es": "..."
+}
+`;
+
 export const analyzeVoiceAndProvideFeedback = async (
   userId: string,
   mp3FilePath: string, 
   userName: string, 
-  level: string = "A1"
-): Promise<TutorFeedbackV3> => {
+  level: string = "A1",
+  wordsToReview: string[] = [],
+  lastQuestion: string | null = null,
+  activeTopic: any = null,
+  mode: string = "conversation",
+  targetPhrase: string | null = null
+): Promise<TutorFeedbackV3 | ShadowingFeedback> => {
   
   // 1. Recuperar contexto histórico del usuario (RAG)
   let historicalContext = "";
@@ -89,10 +135,14 @@ export const analyzeVoiceAndProvideFeedback = async (
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`📡 Inferencia V3 (Thinking: 0) - Intento ${i + 1}...`);
+      console.log(`📡 Inferencia V3 (Thinking: 0) - Intento ${i + 1} - Modo: ${mode}...`);
       
+      const prompt = mode === 'shadowing' && targetPhrase
+          ? buildShadowingPrompt(userName, targetPhrase, historicalContext)
+          : buildUserPrompt(userName, level, historicalContext, wordsToReview, lastQuestion, activeTopic);
+
       const result = await model.generateContent([
-        buildUserPrompt(userName, level, historicalContext),
+        prompt,
         {
           inlineData: {
             data: audioData,

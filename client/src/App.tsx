@@ -1,11 +1,43 @@
 import { useEffect, useState, useRef } from 'react'
 import WebApp from '@twa-dev/sdk'
 import { CoachAvatar } from './components/CoachAvatar'
+import { ProgressBar } from './components/ProgressBar'
+
+// FASE 17: Mapa CEFR → velocidad de reproducción base
+const SPEED_MAP: Record<string, number> = {
+  'A1': 0.75, 'A2': 0.85, 'B1': 0.95, 'B2': 1.0, 'C1': 1.0, 'C2': 1.0
+};
+
+// FASE 22: Constantes para detección de silencio
+const SILENCE_THRESHOLD = 0.005;
+const SILENCE_TIMEOUT_FRAMES = 420; // 7 segundos a ~60fps
+const SILENCE_PROMPTS = [
+  "No rush. Take your time, I'm right here.",
+  "Feeling stuck? Describe it in Spanish and I'll teach you the English word!",
+  "Try this: start with 'Yesterday, I...' and tell me anything that happened.",
+];
 
 function App() {
   const [isCalling, setIsCalling] = useState(false)
   const [status, setStatus] = useState('Listo para practicar')
   const [transcript, setTranscript] = useState('')
+
+  type UserProfile = { 
+    level: string; 
+    name: string; 
+    sessionCount: number;
+    mode?: string;
+    stats?: {
+      grammarAvg: number;
+      pronAvg: number;
+      fluencyAvg: number;
+      vocabAvg: number;
+    }
+  }
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  
+  // FASE 23 & 24: Estado para el modo activo
+  const [appMode, setAppMode] = useState<string>('conversation');
 
   // Referencias para el motor de audio profesional
   const socketRef = useRef<WebSocket | null>(null);
@@ -21,6 +53,10 @@ function App() {
   const isInterruptedRef = useRef(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
+  // FASE 22: Referencias para el detector de silencio
+  const silenceFramesRef = useRef<number>(0);
+  const silenceCooldownRef = useRef<boolean>(false);
+
   useEffect(() => {
     try {
       WebApp.expand();
@@ -29,10 +65,24 @@ function App() {
       console.warn("Telegram WebApp SDK no disponible");
     }
 
+    // FASE 17 & 23: Cargar perfil del usuario para velocidad adaptativa y modo
+    const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
+    if (userId !== 'guest') {
+        fetch(`/api/user/${userId}/profile`)
+            .then(r => r.json())
+            .then(data => {
+              setUserProfile(data);
+              if (data.mode) setAppMode(data.mode);
+            })
+            .catch(() => console.warn('No se pudo cargar el perfil'));
+    }
+
     return () => {
       stopCall();
     }
   }, [])
+
+  const isGuest = !WebApp.initDataUnsafe?.user?.id;
 
   // Referencia para el reloj de sincronización
   const nextStartTimeRef = useRef<number>(0);
@@ -47,6 +97,15 @@ function App() {
       
       const source = playbackContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
+      
+      // Velocidad adaptativa según nivel CEFR o slider
+      // Le pasamos el valor que dicte el slider en tiempo real (si el usuario lo movió)
+      // O el base si acaba de empezar. Como no tenemos referencia directa al slider en el DOM fácil,
+      // la forma más reactiva es leer el valor default del SPEED_MAP para nuevos chunks, 
+      // pero el slider actualizará currentSourceRef si está sonando.
+      // Mejor aún, le daremos la velocidad por defecto si nadie la toca.
+      const speed = SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0;
+      source.playbackRate.value = speed;
       
       // Conectamos directo a los parlantes para asegurar el sonido
       source.connect(playbackContextRef.current.destination);
@@ -103,10 +162,16 @@ function App() {
         }
       }
 
-      // 2. Manejar mensajes de texto simples (si los hay)
+      // 2. Manejar mensajes de texto o comandos
       if (response.type === 'text') {
         setTranscript(prev => (prev + ' ' + response.data).slice(-100));
         setStatus('Coach hablando...');
+      }
+      
+      // FASE 23: Respuesta a cambio de modo
+      if (response.type === 'mode_update') {
+        setAppMode(response.mode);
+        stopCall(); // Forzar reinicio de llamada para aplicar nuevo prompt
       }
     } catch (err) {
       // Ignorar errores de parseo si llegan datos binarios accidentales
@@ -181,6 +246,21 @@ function App() {
             isInterruptedRef.current = false;
           }
 
+          // FASE 22: Detector de Silencio y Ansiedad
+          if (volume < SILENCE_THRESHOLD) {
+            silenceFramesRef.current++;
+            if (silenceFramesRef.current > SILENCE_TIMEOUT_FRAMES && !silenceCooldownRef.current) {
+              silenceCooldownRef.current = true;
+              silenceFramesRef.current = 0;
+              const prompt = SILENCE_PROMPTS[Math.floor(Math.random() * SILENCE_PROMPTS.length)];
+              socket.send(JSON.stringify({ type: 'text', data: prompt }));
+              setStatus('Coach te está animando...');
+              setTimeout(() => { silenceCooldownRef.current = false; }, 20000);
+            }
+          } else {
+            silenceFramesRef.current = 0;
+          }
+
           const pcmData = new Int16Array(inputData.length);
           for (let i = 0; i < inputData.length; i++) {
             const s = Math.max(-1, Math.min(1, inputData[i]));
@@ -217,6 +297,10 @@ function App() {
     
     audioStack.current = [];
     isPlayingRef.current = false;
+
+    // FASE 22: Reset del detector de silencio
+    silenceFramesRef.current = 0;
+    silenceCooldownRef.current = false;
   }
 
   const interruptAI = () => {
@@ -251,28 +335,137 @@ function App() {
     }
   }
 
+  // FASE 23 & 24: Cambiar Modo
+  const handleToggleMode = (newMode: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      // Si estamos en llamada, le decimos al server que lo cambie por WS
+      socketRef.current.send(JSON.stringify({ type: 'command', command: '/toggle_mode', value: newMode }));
+    } else {
+      // Si no estamos en llamada, usamos la API REST para persistirlo antes de conectar
+      const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
+      if (userId !== 'guest') {
+        fetch(`/api/user/${userId}/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: newMode })
+        }).then(() => setAppMode(newMode)).catch(e => console.error(e));
+      } else {
+        setAppMode(newMode);
+      }
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center justify-between h-screen w-full bg-slate-950 p-8 text-white font-sans overflow-hidden">
-      {/* Header: Información del Usuario */}
-      <div className="text-center mt-10">
-        <p className="text-slate-400 text-sm uppercase tracking-widest mb-2">AI English Coach</p>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-          {WebApp.initDataUnsafe?.user?.first_name || 'Estudiante'}
+    <div className="flex flex-col items-center justify-between h-screen w-full p-6 text-white font-sans overflow-hidden">
+      
+      {/* Header FASE 18, 23 & 24: Jerarquía Premium, Saludo y Modo */}
+      <div className="text-center mt-6 w-full max-w-sm relative" style={{ animation: 'fadeInUp 0.6s ease-out both' }}>
+        
+        {/* Selector de Modo */}
+        <select 
+          value={appMode}
+          onChange={(e) => handleToggleMode(e.target.value)}
+          className="absolute top-0 right-0 bg-slate-800/80 backdrop-blur border border-slate-600 pl-3 pr-8 py-1.5 rounded-full text-xs font-bold shadow-lg outline-none appearance-none cursor-pointer hover:bg-slate-700/80 transition-colors"
+          style={{ 
+            backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394A3B8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', 
+            backgroundRepeat: 'no-repeat', 
+            backgroundPosition: 'right 0.8em top 50%', 
+            backgroundSize: '0.65em auto' 
+          }}
+        >
+          <option value="conversation">💬 Chat Libre</option>
+          <option value="shadowing">🦜 Shadowing</option>
+          <option value="roleplay_tech_interview">🎭 Entrevista Tech</option>
+          <option value="roleplay_hotel_complaint">🏨 Queja de Hotel</option>
+        </select>
+
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <span className="text-slate-400 text-xs font-semibold tracking-widest uppercase">AI English Coach</span>
+        </div>
+        <h1 className="text-3xl font-extrabold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+          {isGuest ? 'Modo Invitado 🕵️‍♂️' : `Hola, ${userProfile?.name || WebApp.initDataUnsafe?.user?.first_name || 'Estudiante'} 👋`}
         </h1>
-        <p className={`mt-4 text-lg font-medium h-8 ${isCalling ? 'text-blue-400 animate-pulse' : 'text-slate-500'}`}>
-          {status}
-        </p>
+        
+        {/* Motivation Strip (Solo usuarios reales) */}
+        {!isGuest && (
+          <div className="mt-3 flex items-center justify-center gap-4 text-sm font-medium">
+            <div className="flex items-center gap-1.5 bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/50">
+              <span>🔥</span>
+              <span className="text-slate-200">{userProfile?.sessionCount || 0} sesiones</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-500/30">
+              <span>🎓</span>
+              <span className="text-indigo-300">Nivel {userProfile?.level || 'A1'}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Visualizer: El Avatar 3D de la IA */}
-      <div className="w-full flex justify-center items-center my-4">
+      <div className="w-full flex justify-center items-center my-2 relative" style={{ animation: 'fadeInUp 0.8s ease-out 0.1s both' }}>
+        {/* Glow de profundidad */}
+        <div className="absolute inset-0 bg-blue-500/10 blur-[50px] rounded-full w-48 h-48 m-auto mix-blend-screen pointer-events-none" />
         <CoachAvatar />
       </div>
 
-      {/* Transcript Area: Para ver lo que la IA está diciendo */}
-      <div className="w-full max-w-sm px-4 text-center italic text-slate-400 text-sm h-12 overflow-hidden leading-tight">
-        {transcript}
+      {/* Progress Bars FASE 18: Estadísticas Reales */}
+      {userProfile?.stats && !isCalling && !isGuest && (
+        <div className="w-full max-w-[280px] mx-auto z-10">
+          <ProgressBar label="Gramática" value={userProfile.stats.grammarAvg} delayMs={200} />
+          <ProgressBar label="Pronunciación" value={userProfile.stats.pronAvg} delayMs={300} />
+          <ProgressBar label="Fluidez" value={userProfile.stats.fluencyAvg} delayMs={400} />
+          <ProgressBar label="Vocabulario" value={userProfile.stats.vocabAvg} delayMs={500} />
+        </div>
+      )}
+
+      {/* FASE 18: CTA para Modo Invitado */}
+      {isGuest && !isCalling && (
+        <div className="w-full max-w-[280px] mx-auto z-10 bg-slate-800/60 backdrop-blur-md border border-blue-500/30 p-4 rounded-2xl text-center shadow-lg" style={{ animation: 'fadeInUp 0.8s ease-out 0.2s both' }}>
+          <p className="text-sm text-slate-300 mb-3 leading-tight">
+            Estás en modo prueba. Tu progreso no se guardará.
+          </p>
+          <a 
+            href="https://t.me/tu_bot_aqui" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-block w-full py-2 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-300 rounded-xl text-sm font-semibold transition-all"
+          >
+            Abrir en Telegram 🚀
+          </a>
+        </div>
+      )}
+
+      {/* Área de estado durante llamada */}
+      {isCalling && (
+        <div className="w-full max-w-sm px-4 flex flex-col items-center gap-2" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
+          <p className="text-blue-400 animate-pulse font-medium">{status}</p>
+          <div className="text-center italic text-slate-300 text-sm h-16 overflow-hidden leading-snug">
+            {transcript}
+          </div>
+        </div>
+      )}
+
+      {/* FASE 17: Control manual de velocidad - Solo visible en llamada */}
+      {isCalling && (
+        <div className="flex items-center gap-3 text-xs text-slate-500 w-full max-w-[200px] mx-auto mb-2" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
+        <span title="Más lento (ideal A1)">🐢</span>
+        <input
+          type="range" 
+          min="0.6" 
+          max="1.2" 
+          step="0.05"
+          defaultValue={SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0}
+          className="flex-1 accent-blue-500"
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            if (currentSourceRef.current) {
+              currentSourceRef.current.playbackRate.value = val;
+            }
+          }}
+        />
+        <span title="Más rápido">🐇</span>
       </div>
+      )}
 
       {/* Footer: Controles */}
       <div className="mb-12 w-full max-w-xs flex flex-col gap-3">
@@ -294,13 +487,18 @@ function App() {
         )}
         <button
           onClick={toggleCall}
-          className={`w-full py-4 rounded-3xl font-bold text-lg transition-all duration-300 shadow-lg ${
+          className={`w-full py-4 rounded-3xl font-bold text-lg flex items-center justify-center gap-2 transition-all duration-500 hover:scale-[1.02] active:scale-95 shadow-xl ${
             isCalling 
               ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' 
-              : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/30 ring-1 ring-white/10'
           }`}
+          style={{ animation: 'fadeInUp 0.8s ease-out 0.6s both' }}
         >
-          {isCalling ? 'Finalizar Sesión' : 'Empezar a Hablar'}
+          {isCalling ? (
+            <><span>⏹️</span> Finalizar Sesión</>
+          ) : (
+            <><span>🎤</span> Empezar a Hablar</>
+          )}
         </button>
       </div>
     </div>

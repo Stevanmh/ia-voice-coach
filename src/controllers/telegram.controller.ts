@@ -3,7 +3,9 @@ import { cleanupFiles } from '@utils/cleanup.util';
 import { downloadAndConvertAudio } from '@services/audio.service';
 import { analyzeVoiceAndProvideFeedback } from '@services/ai.service';
 import { generateTTSAudio } from '@services/tts.service';
-import { getOrCreateUser, saveUserSession, getUserStats, getTopWeakPoints, getChatHistory, saveMessage, updateUserLevel } from '@services/user.service';
+import { getOrCreateUser, saveUserSession, getUserStats, getTopWeakPoints, getChatHistory, saveMessage, updateUserLevel, getWordsToReviewToday, getLastSessionContext, assignNextTopic, toggleUserMode } from '@services/user.service';
+
+const shadowingPhrases = new Map<string, string>();
 
 export const setupTelegramRoutes = (bot: Telegraf) => {
     // Lógica reutilizable para mostrar estadísticas
@@ -123,25 +125,71 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
         // 1. Obtener usuario
         const user = await getOrCreateUser(from.id.toString(), from.first_name);
 
+        // FASE 19 & 20: Extraer palabras y contexto de sesión anterior
+        const wordsToReview = await getWordsToReviewToday(user.id);
+        const lastQuestion = await getLastSessionContext(user.id);
+        const activeTopic = await assignNextTopic(user.id);
+
         // 2. Procesar audio (Descarga y Conversión)
         const fileLink = await ctx.telegram.getFileLink(voiceMsg.file_id);
         const finalMp3Path = await downloadAndConvertAudio(fileLink, voiceMsg.file_id);
         
-        // 3. Inferencia V3 (Thinking: 0) con RAG
-        const feedback = await analyzeVoiceAndProvideFeedback(
+        // 3. Inferencia V3 (Thinking: 0) con RAG, Spaced Repetition, Contexto y Currículo
+        const targetPhrase = shadowingPhrases.get(user.id) || null;
+        
+        const feedbackRaw = await analyzeVoiceAndProvideFeedback(
             user.id,
             finalMp3Path, 
             user.name || "Estudiante", 
-            user.level
+            user.level,
+            wordsToReview,
+            lastQuestion,
+            activeTopic,
+            user.mode,
+            targetPhrase
         );
         
         // Detenemos el indicador de escritura ya que tenemos la respuesta
         clearInterval(typingInterval);
 
+        // FASE 23: Flujo de Shadowing
+        if (user.mode === 'shadowing' && targetPhrase) {
+            const shadowFb = feedbackRaw as any;
+            let message = `🦜 *Evaluación de Shadowing*\n\n`;
+            message += `🗣️ Tu intento: _"${shadowFb.original_transcript}"_\n`;
+            message += `🎯 Puntaje: *${shadowFb.pronunciation_score}/100*\n\n`;
+            
+            if (shadowFb.passed) {
+                message += `✅ ¡Excelente! Pasaste la prueba.\n\n`;
+                message += `Siguiente frase:\n\`${shadowFb.next_phrase}\`\n_(Traducción: ${shadowFb.next_phrase_es})_`;
+                shadowingPhrases.set(user.id, shadowFb.next_phrase);
+            } else {
+                message += `❌ No superaste el 85%.\n💡 *Corrección:* ${shadowFb.feedback_es}\n\n`;
+                message += `Vuelve a intentarlo:\n\`${targetPhrase}\``;
+            }
+
+            await ctx.reply(message, { parse_mode: 'Markdown' });
+            
+            try {
+                const phraseToSpeak = shadowFb.passed ? shadowFb.next_phrase : targetPhrase;
+                const ttsPath = await generateTTSAudio(phraseToSpeak, voiceMsg.file_id);
+                await ctx.sendVoice({ source: ttsPath }, { caption: '🔊 Escucha la pronunciación correcta' });
+                await cleanupFiles([finalMp3Path, finalMp3Path.replace('.mp3', '.ogg'), ttsPath]);
+            } catch (e) {
+                await cleanupFiles([finalMp3Path, finalMp3Path.replace('.mp3', '.ogg')]);
+            }
+            
+            await ctx.telegram.deleteMessage(ctx.chat!.id, initialMsg.message_id).catch(() => {});
+            return;
+        }
+
+        // Flujo de Conversación Normal
+        const feedback = feedbackRaw as any;
+
         // 4. TAREA 10.5: Persistencia en paralelo (Ahorro ~150ms)
         try {
             await Promise.all([
-                saveUserSession(user.id, feedback as any, feedback.original_transcript),
+                saveUserSession(user.id, feedback, feedback.original_transcript),
                 saveMessage(user.id, 'user', feedback.original_transcript),
                 saveMessage(user.id, 'model', feedback.follow_up),
                 ...(feedback.cefr !== user.level ? [updateUserLevel(user.id, feedback.cefr)] : [])
@@ -151,7 +199,6 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
         }
 
         // 5. TAREA 10.6: Formateador V3 - LA PIZARRA (Jerarquizada)
-        // Se envía PRIMERO para que el estudiante entienda su error antes del reto.
         let lessonText = `👨‍🏫 *La Pizarra*\n\n`;
         lessonText += `📝 _"${feedback.original_transcript}"_\n\n`;
         lessonText += `✅ _"${feedback.corrected_version}"_\n\n`;
@@ -162,7 +209,7 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
 
         if (feedback.minor_errors && feedback.minor_errors.length > 0) {
             lessonText += `\n━━ *También:*\n`;
-            feedback.minor_errors.forEach(err => {
+            feedback.minor_errors.forEach((err: any) => {
                 lessonText += `• ${err.what} → ${err.fix}\n`;
             });
         }
@@ -170,7 +217,6 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
         await ctx.reply(lessonText, { parse_mode: 'Markdown' });
 
         // 6. TAREA 10.6: Formateador V3 - EL COACH (Compacto)
-        // Se envía DESPUÉS para que el botón de stats y la pregunta queden al final.
         const coachReply = 
             `${feedback.coach_comment}\n\n` +
             `🎙️ *${feedback.follow_up}*\n` +
@@ -194,7 +240,7 @@ export const setupTelegramRoutes = (bot: Telegraf) => {
             await cleanupFiles([finalMp3Path, finalMp3Path.replace('.mp3', '.ogg')]);
         }
         
-        // Borramos el mensaje de "analizando" para limpiar el chat
+        // Borramos el mensaje de "analizando"
         await ctx.telegram.deleteMessage(ctx.chat!.id, initialMsg.message_id).catch(() => {});
 
     } catch (error) {

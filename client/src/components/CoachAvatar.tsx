@@ -1,69 +1,55 @@
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, Html, useProgress } from '@react-three/drei';
+import { useGLTF, Html } from '@react-three/drei';
 import { Suspense, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 
-// ─── PRE-CARGA TEMPRANA ──────────────────────────────────────────────────────
+// ─── PRE-CARGA TEMPRANA ─────────────────────────────────────────────────────────────────
 // Iniciamos la descarga del modelo en el primer tick de JS,
 // antes de que el Canvas o el Suspense se monten en el DOM.
-useGLTF.preload('/avaturn.glb');
+useGLTF.preload('/avaturn_draco.glb');
 
 // ─── SKELETON LOADER ─────────────────────────────────────────────────────────
 // Se renderiza dentro del Canvas mientras el modelo 3D descarga y compila.
+// Parece la silueta del avatar — percepción de carga instantánea.
 function AvatarLoader() {
-  const { progress } = useProgress();
   return (
     <Html center>
       <div style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: '12px',
+        gap: '10px',
         userSelect: 'none',
         pointerEvents: 'none',
       }}>
-        {/* Spinner animado con CSS puro — sin dependencias extra */}
+        {/* Silueta de cabeza — con shimmer */}
         <div style={{
-          width: '48px',
-          height: '48px',
+          width: '110px',
+          height: '110px',
           borderRadius: '50%',
-          border: '3px solid rgba(99, 102, 241, 0.2)',
-          borderTopColor: '#6366f1',
-          animation: 'spin 0.9s linear infinite',
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(129,140,248,0.25) 50%, rgba(99,102,241,0.15) 100%)',
+          backgroundSize: '200% 200%',
+          animation: 'shimmer 1.6s ease-in-out infinite',
+          border: '1px solid rgba(129,140,248,0.2)',
+          boxShadow: '0 0 30px rgba(99,102,241,0.15)',
         }} />
-        {/* Texto de estado */}
-        <p style={{
-          color: '#a5b4fc',
-          fontSize: '12px',
-          fontFamily: 'Inter, sans-serif',
-          letterSpacing: '0.05em',
-          margin: 0,
-        }}>
-          {progress < 100
-            ? `Conectando con tu Coach... ${Math.round(progress)}%`
-            : 'Preparando escena...'}
-        </p>
-        {/* Barra de progreso */}
+        {/* Silueta de hombros */}
         <div style={{
-          width: '120px',
-          height: '2px',
-          borderRadius: '2px',
-          background: 'rgba(99, 102, 241, 0.2)',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            height: '100%',
-            width: `${progress}%`,
-            background: 'linear-gradient(90deg, #6366f1, #818cf8)',
-            borderRadius: '2px',
-            transition: 'width 0.3s ease',
-          }} />
-        </div>
+          width: '160px',
+          height: '40px',
+          borderRadius: '80px 80px 0 0',
+          marginTop: '-8px',
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.10) 0%, rgba(129,140,248,0.18) 50%, rgba(99,102,241,0.10) 100%)',
+          backgroundSize: '200% 200%',
+          animation: 'shimmer 1.6s ease-in-out infinite 0.2s',
+          border: '1px solid rgba(129,140,248,0.15)',
+          borderBottom: 'none',
+        }} />
       </div>
-      {/* Keyframe de spinning inyectado globalmente (solo una vez) */}
       <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
+        @keyframes shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
       `}</style>
     </Html>
@@ -77,7 +63,7 @@ interface AvatarModelProps {
 
 // ─── MODELO 3D ───────────────────────────────────────────────────────────────
 function AvatarModel({ glowRingRef }: AvatarModelProps) {
-  const { scene } = useGLTF('/avaturn.glb');
+  const { scene } = useGLTF('/avaturn_draco.glb');
   const headMeshRef = useRef<THREE.Mesh | null>(null);
   const neckBoneRef = useRef<THREE.Object3D | null>(null);
   const headBoneRef = useRef<THREE.Object3D | null>(null);

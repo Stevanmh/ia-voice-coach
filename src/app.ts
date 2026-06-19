@@ -2,6 +2,7 @@ import { Telegraf } from 'telegraf';
 import cron from 'node-cron';
 import http from 'http';
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import WebSocket, { WebSocketServer } from 'ws';
 import { env } from '@config/env';
@@ -9,6 +10,7 @@ import { setupTelegramRoutes } from '@controllers/telegram.controller';
 import { sendDailyChallenges, consolidateDailyMemories } from '@services/challenge.service';
 import { EmbeddingService } from '@services/embedding.service';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getLastSessionContext } from '@services/user.service';
 
 const bot = new Telegraf(env.BOT_TOKEN);
 
@@ -34,7 +36,52 @@ bot.telegram.setMyCommands([
 
 // --- CONFIGURACIÓN WEB (Mini App) ---
 const app = express();
-app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// OPTIMIZACIÓN: Gzip para todos los assets (incluye el GLB del avatar)
+app.use(compression());
+app.use(express.json());
+
+// FASE 17/18: Endpoint de perfil para la Mini App con métricas de progreso
+app.get('/api/user/:userId/profile', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { getOrCreateUser, getUserStats } = await import('@services/user.service');
+        const user = await getOrCreateUser(userId);
+        const stats = await getUserStats(userId);
+        
+        res.json({ 
+            level: user.level, 
+            name: user.name,
+            sessionCount: user.sessionCount,
+            mode: (user as any).mode,
+            stats
+        });
+    } catch (e) {
+        console.error("Error obteniendo perfil:", e);
+        res.status(500).json({ error: 'No se pudo obtener el perfil' });
+    }
+});
+
+// FASE 23: Endpoint para cambiar de modo
+app.post('/api/user/:userId/mode', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { mode } = req.body;
+        const { toggleUserMode } = await import('@services/user.service');
+        await toggleUserMode(userId, mode);
+        res.json({ success: true, mode });
+    } catch (e) {
+        console.error("Error cambiando modo:", e);
+        res.status(500).json({ error: 'No se pudo cambiar el modo' });
+    }
+});
+
+// OPTIMIZACIÓN: Caché de 1 año para assets estáticos del cliente
+// El GLB del avatar se descarga una vez y queda cacheado en el navegador.
+app.use(express.static(path.join(__dirname, '../client/dist'), {
+    maxAge: '1y',
+    immutable: true,
+}));
 
 // --- FASE 11: INFRAESTRUCTURA WEBSOCKET + GEMINI LIVE PROXY ---
 const server = http.createServer(app);
@@ -61,18 +108,46 @@ wss.on('connection', async (ws, req) => {
         }
     }
 
+    // FASE 20: Inyección de la última pregunta del bot
+    let lastQuestion = null;
+    if (userId !== 'guest') {
+        try {
+            lastQuestion = await getLastSessionContext(userId);
+        } catch (e) {
+            console.warn("⚠️ No se pudo cargar lastQuestion", e);
+        }
+    }
+
+    // FASE 23 & 24: Inyectar modo en el prompt
+    let userMode = 'conversation';
+    if (userId !== 'guest') {
+        const { prisma } = await import('@lib/prisma');
+        const u = await prisma.user.findUnique({ where: { id: userId } });
+        if (u && u.mode) userMode = u.mode;
+    }
+
     const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${env.GEMINI_API_KEY}`;
     const geminiWs = new WebSocket(GEMINI_LIVE_URL);
 
-    geminiWs.on('open', () => {
+    geminiWs.on('open', async () => {
+        let sysInstText = `You are a professional English Coach. Focus on pronunciation and grammar. Keep responses under 2 sentences. ALWAYS respond in English, but you can say 1 brief sentence in Spanish if the user struggles. ${historicalContext} ${lastQuestion ? `\nPREVIOUS SESSION BRIDGE: Last time you asked the student: "${lastQuestion}". Reference this naturally if relevant.` : ''}`;
+        
+        if (userMode === 'shadowing') {
+            sysInstText = `MODE: SHADOWING. The user will try to repeat phrases. ONLY evaluate their pronunciation. DO NOT evaluate grammar or start a conversation. If they fail, tell them exactly what sound they failed in Spanish and ask them to repeat. If they succeed, congratulate them and generate a NEW native idiom that uses their weak points: ${historicalContext}. Always speak back naturally.`;
+        } else if (userMode.startsWith('roleplay_')) {
+            const { ROLEPLAYS } = await import('./data/roleplays');
+            const roleplay = ROLEPLAYS[userMode];
+            if (roleplay) {
+                sysInstText = roleplay.systemInstruction;
+            }
+        }
+            
         const setupMessage = {
             setup: {
-                model: "models/gemini-3.1-flash-live-preview",
+                model: "models/gemini-2.0-flash-exp",
                 generationConfig: { responseModalities: ["AUDIO"] },
                 systemInstruction: {
-                    parts: [{ 
-                        text: `You are a professional English Coach. Focus on pronunciation and grammar. ${historicalContext}` 
-                    }]
+                    parts: [{ text: sysInstText }]
                 }
             }
         };
@@ -102,10 +177,26 @@ wss.on('connection', async (ws, req) => {
     });
 
     // Puente: Navegador -> Servidor -> Gemini
-    ws.on('message', (data) => {
+    ws.on('message', async (data) => {
         if (geminiWs.readyState !== WebSocket.OPEN) return;
         try {
             const msg = JSON.parse(data.toString());
+            
+            // FASE 23 & 24: Toggle Mode Command via WebSocket
+            if (msg.type === 'command' && msg.command === '/toggle_mode') {
+                const { prisma } = await import('@lib/prisma');
+                const { toggleUserMode } = await import('@services/user.service');
+                const u = await prisma.user.findUnique({ where: { id: userId } });
+                if (u) {
+                    const newMode = msg.value || (u.mode === 'conversation' ? 'shadowing' : 'conversation');
+                    await toggleUserMode(userId, newMode);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'mode_update', mode: newMode }));
+                    }
+                }
+                return;
+            }
+
             if (msg.type === 'text') {
                 sessionTranscript += `Student: ${msg.data}\n`;
                 geminiWs.send(JSON.stringify({
