@@ -131,7 +131,7 @@ wss.on('connection', async (ws, req) => {
         if (u && u.mode) userMode = u.mode;
     }
 
-    const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${env.GEMINI_API_KEY}`;
+    const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${env.GEMINI_API_KEY}`;
     const geminiWs = new WebSocket(GEMINI_LIVE_URL);
 
     geminiWs.on('open', async () => {
@@ -149,7 +149,7 @@ wss.on('connection', async (ws, req) => {
             
         const setupMessage = {
             setup: {
-                model: "models/gemini-2.0-flash",
+                model: "models/gemini-2.0-flash-exp",
                 generationConfig: { responseModalities: ["AUDIO"] },
                 systemInstruction: {
                     parts: [{ text: sysInstText }]
