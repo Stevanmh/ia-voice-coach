@@ -359,32 +359,35 @@ function App() {
     <div className="flex flex-col items-center justify-between h-screen w-full p-6 text-white font-sans overflow-hidden">
       
       {/* Header FASE 18, 23 & 24: Jerarquía Premium, Saludo y Modo */}
-      <div className="text-center mt-6 w-full max-w-sm relative" style={{ animation: 'fadeInUp 0.6s ease-out both' }}>
+      <div className="text-center mt-6 w-full max-w-sm flex flex-col items-center gap-3" style={{ animation: 'fadeInUp 0.6s ease-out both' }}>
         
-        {/* Selector de Modo */}
-        <select 
-          value={appMode}
-          onChange={(e) => handleToggleMode(e.target.value)}
-          className="absolute top-0 right-0 bg-slate-800/80 backdrop-blur border border-slate-600 pl-3 pr-8 py-1.5 rounded-full text-xs font-bold shadow-lg outline-none appearance-none cursor-pointer hover:bg-slate-700/80 transition-colors"
-          style={{ 
-            backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394A3B8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', 
-            backgroundRepeat: 'no-repeat', 
-            backgroundPosition: 'right 0.8em top 50%', 
-            backgroundSize: '0.65em auto' 
-          }}
-        >
-          <option value="conversation">💬 Chat Libre</option>
-          <option value="shadowing">🦜 Shadowing</option>
-          <option value="roleplay_tech_interview">🎭 Entrevista Tech</option>
-          <option value="roleplay_hotel_complaint">🏨 Queja de Hotel</option>
-        </select>
-
-        <div className="flex items-center justify-center gap-2 mb-2">
+        <div className="flex items-center justify-center gap-2">
           <span className="text-slate-400 text-xs font-semibold tracking-widest uppercase">AI English Coach</span>
         </div>
-        <h1 className="text-3xl font-extrabold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+        
+        <h1 className="text-3xl font-extrabold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent px-2">
           {isGuest ? 'Modo Invitado 🕵️‍♂️' : `Hola, ${userProfile?.name || WebApp.initDataUnsafe?.user?.first_name || 'Estudiante'} 👋`}
         </h1>
+
+        {/* Selector de Modo centrado debajo del título */}
+        <div className="relative mt-1">
+          <select 
+            value={appMode}
+            onChange={(e) => handleToggleMode(e.target.value)}
+            className="bg-slate-800/80 backdrop-blur border border-slate-600 pl-4 pr-10 py-2 rounded-full text-sm font-bold shadow-lg outline-none appearance-none cursor-pointer hover:bg-slate-700/80 transition-colors"
+            style={{ 
+              backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394A3B8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', 
+              backgroundRepeat: 'no-repeat', 
+              backgroundPosition: 'right 1em top 50%', 
+              backgroundSize: '0.8em auto' 
+            }}
+          >
+            <option value="conversation">💬 Chat Libre</option>
+            <option value="shadowing">🦜 Shadowing</option>
+            <option value="roleplay_tech_interview">🎭 Entrevista Tech</option>
+            <option value="roleplay_hotel_complaint">🏨 Queja de Hotel</option>
+          </select>
+        </div>
         
         {/* Motivation Strip (Solo usuarios reales) */}
         {!isGuest && (
