@@ -34,6 +34,12 @@ const model = genAI.getGenerativeModel({
   }
 });
 
+// Modelo separado para texto libre (cron de retos diarios).
+// NO hereda el systemInstruction de evaluación ni fuerza JSON.
+const textModel = genAI.getGenerativeModel({
+  model: "gemini-2.0-flash",
+});
+
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
@@ -195,7 +201,7 @@ export const generateAIChallenge = async (userName: string, level: string, weakP
       Max 180 characters total. No flattery.
     `;
 
-    const result = await model.generateContent(prompt);
+    const result = await textModel.generateContent(prompt);
     return result.response.text().trim();
   } catch (error) {
     console.error("Error generating AI challenge:", error);
