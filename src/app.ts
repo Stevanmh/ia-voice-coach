@@ -191,10 +191,10 @@ wss.on('connection', async (ws, req) => {
                     const combinedData = Buffer.concat(initialAudioBuffer);
                     geminiWs.send(JSON.stringify({
                         realtimeInput: {
-                            mediaChunks: [{
+                            audio: {
                                 mimeType: "audio/pcm;rate=16000",
                                 data: combinedData.toString('base64')
-                            }]
+                            }
                         }
                     }));
                     initialAudioBuffer = [];
@@ -266,10 +266,10 @@ wss.on('connection', async (ws, req) => {
             if (isGeminiReady) {
                 geminiWs.send(JSON.stringify({
                     realtimeInput: {
-                        mediaChunks: [{
+                        audio: {
                             mimeType: "audio/pcm;rate=16000",
                             data: Buffer.from(data as Buffer).toString('base64')
-                        }]
+                        }
                     }
                 }));
             } else {
