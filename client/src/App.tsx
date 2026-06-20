@@ -34,6 +34,9 @@ function App() {
   // FASE 23 & 24: Estado para el modo activo
   const [appMode, setAppMode] = useState<string>('conversation');
 
+  // FASE 17: Control de velocidad de habla del Coach (0.5 = lento, 1.0 = normal)
+  const [speechRate, setSpeechRate] = useState<number>(1.0);
+
   // Referencias para el motor de audio profesional
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -251,7 +254,8 @@ function App() {
       const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = import.meta.env.DEV ? '127.0.0.1:3000' : window.location.host;
-      const socket = new WebSocket(`${protocol}//${host}?userId=${userId}`);
+      // Pasar la velocidad de habla al servidor para que Gemini la aplique desde el origen
+      const socket = new WebSocket(`${protocol}//${host}?userId=${userId}&speed=${speechRate}`);
       socket.binaryType = 'arraybuffer'; // Recibir audio binario directamente sin conversión Blob
       socketRef.current = socket;
 
@@ -450,12 +454,21 @@ function App() {
         </div>
       )}
 
-      {/* FASE 18: CTA para Modo Invitado */}
+      {/* FASE 18: CTA para Modo Invitado + DEBUG PANEL TEMPORAL */}
       {isGuest && !isCalling && (
         <div className="w-full max-w-[280px] mx-auto z-10 bg-slate-800/60 backdrop-blur-md border border-blue-500/30 p-4 rounded-2xl text-center shadow-lg" style={{ animation: 'fadeInUp 0.8s ease-out 0.2s both' }}>
           <p className="text-sm text-slate-300 mb-3 leading-tight">
             Estás en modo prueba. Tu progreso no se guardará.
           </p>
+          {/* DEBUG TEMPORAL: muestra qué ve el SDK — borrar después del diagnóstico */}
+          <details className="text-left mb-3">
+            <summary className="text-xs text-yellow-400 cursor-pointer font-mono">🔍 Debug SDK</summary>
+            <div className="mt-1 text-xs font-mono bg-slate-900/80 p-2 rounded-lg break-all text-slate-300 max-h-24 overflow-y-auto">
+              <div><span className="text-yellow-300">initData:</span> {WebApp.initData ? `"${WebApp.initData.slice(0, 80)}..."` : '❌ VACÍO'}</div>
+              <div><span className="text-yellow-300">userId:</span> {String(WebApp.initDataUnsafe?.user?.id ?? '❌ sin user')}</div>
+              <div><span className="text-yellow-300">platform:</span> {WebApp.platform ?? '❌ sin platform'}</div>
+            </div>
+          </details>
           <a 
             href="https://t.me/tu_bot_aqui" 
             target="_blank" 
@@ -477,25 +490,25 @@ function App() {
         </div>
       )}
 
-      {/* Control de VOLUMEN - usa GainNode, sin distorsión de pitch */}
-      {isCalling && (
-        <div className="flex items-center gap-3 text-xs text-slate-500 w-full max-w-[220px] mx-auto mb-2" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
-          <span title="Volumen bajo">🔈</span>
-          <input
-            type="range"
-            min="0"
-            max="1.5"
-            step="0.05"
-            defaultValue="1.0"
-            className="flex-1 accent-blue-500"
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (gainNodeRef.current) {
-                gainNodeRef.current.gain.value = val;
-              }
-            }}
-          />
-          <span title="Volumen alto">🔊</span>
+      {/* FASE 17: Slider de velocidad — visible ANTES de la llamada */}
+      {!isCalling && (
+        <div className="flex flex-col items-center gap-1 w-full max-w-[240px] mx-auto" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
+          <span className="text-xs text-slate-400 font-medium">
+            Velocidad del Coach: {speechRate === 1.0 ? 'Normal' : speechRate >= 0.75 ? 'Moderada' : 'Lenta'}
+          </span>
+          <div className="flex items-center gap-3 w-full">
+            <span title="Lento">🐢</span>
+            <input
+              type="range"
+              min="0.5"
+              max="1.0"
+              step="0.05"
+              value={speechRate}
+              className="flex-1 accent-blue-500"
+              onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+            />
+            <span title="Normal">🗣️</span>
+          </div>
         </div>
       )}
 

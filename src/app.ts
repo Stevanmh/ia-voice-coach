@@ -95,9 +95,11 @@ const wss = new WebSocketServer({ server });
 wss.on('connection', async (ws, req) => {
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     const userId = url.searchParams.get('userId') || 'guest';
+    // Leer velocidad de habla: mín 0.5 (lento), máx 1.0 (normal). Nunca más rápido que normal.
+    const speakingRate = Math.min(1.0, Math.max(0.5, parseFloat(url.searchParams.get('speed') || '1.0')));
     let sessionTranscript = "";
     
-    console.log(`💎 [Live API] Cliente conectado (${userId})`);
+    console.log(`📎 [Live API] Cliente conectado (${userId}) a velocidad ${speakingRate}x`);
 
     // 1. Cargar contexto histórico
     let historicalContext = "";
@@ -150,7 +152,10 @@ wss.on('connection', async (ws, req) => {
         const setupMessage = {
             setup: {
                 model: "models/gemini-3.1-flash-live-preview",
-                generationConfig: { responseModalities: ["AUDIO"] },
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: { speakingRate }  // 0.5 = lento, 1.0 = normal
+                },
                 systemInstruction: {
                     parts: [{ text: sysInstText }]
                 }
