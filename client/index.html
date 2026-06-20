@@ -7,9 +7,10 @@
     <title>AI English Coach</title>
     <!-- OPTIMIZACIÓN: Pre-descarga del avatar 3D ANTES de que React inicialice -->
     <!-- Esto elimina ~800ms de latencia percibida en la primera carga -->
-    <!-- NOTA: NO añadir aquí el script de telegram-web-app.js. -->
-    <!-- Telegram lo inyecta automáticamente. @twa-dev/sdk lo envuelve con tipos. -->
-    <!-- Añadir el script externo reinicializa window.Telegram y borra los datos del usuario. -->
+    <!-- Script OFICIAL de Telegram - REQUERIDO para Telegram Web y Desktop -->
+    <!-- Documentación: https://core.telegram.org/bots/webapps#initializing-mini-apps -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
     <link rel="preload" href="/avaturn_draco.glb" as="fetch" crossorigin="anonymous" />
 </head>
   <body>
