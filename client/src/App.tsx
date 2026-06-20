@@ -391,7 +391,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-between h-screen w-full p-6 text-white font-sans overflow-hidden">
+    <div className="flex flex-col items-center w-full min-h-screen pb-36 p-6 text-white font-sans overflow-y-auto">
       
       {/* Header FASE 18, 23 & 24: Jerarquía Premium, Saludo y Modo */}
       <div className="text-center mt-6 w-full max-w-sm flex flex-col items-center gap-3" style={{ animation: 'fadeInUp 0.6s ease-out both' }}>
@@ -514,8 +514,8 @@ function App() {
         </div>
       )}
 
-      {/* Footer: Controles */}
-      <div className="mb-12 w-full max-w-xs flex flex-col gap-3">
+      {/* Footer fijo: siempre visible en la parte inferior */}
+      <div className="fixed bottom-0 left-0 right-0 px-6 pb-6 pt-3 flex flex-col gap-3 max-w-xs mx-auto">
         {isCalling && (
           <div className="grid grid-cols-2 gap-3 w-full">
             <button
