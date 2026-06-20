@@ -138,6 +138,15 @@ wss.on('connection', async (ws, req) => {
 
     geminiWs.on('open', async () => {
         let sysInstText = `You are a professional English Coach. Focus on pronunciation and grammar. Keep responses under 2 sentences. ALWAYS respond in English, but you can say 1 brief sentence in Spanish if the user struggles. ${historicalContext} ${lastQuestion ? `\nPREVIOUS SESSION BRIDGE: Last time you asked the student: "${lastQuestion}". Reference this naturally if relevant.` : ''}`;
+
+        // FASE 17 (v2): Control de velocidad mediante Inyección de Prompt (Prosody Control)
+        // Dado que la Live API aún no soporta speechConfig.speakingRate nativamente,
+        // forzamos a la IA a hablar más despacio alterando su personalidad de entrega.
+        if (speakingRate <= 0.75) {
+            sysInstText += `\n\nCRITICAL PACING INSTRUCTION: The user is a beginner and has requested SLOW speech. You MUST speak very slowly, clearly, and enunciate every single syllable. Leave slight pauses between sentences. Do not rush.`;
+        } else if (speakingRate < 1.0) {
+            sysInstText += `\n\nPACING INSTRUCTION: Speak at a moderate, relaxed pace. Enunciate clearly.`;
+        }
         
         if (userMode === 'shadowing') {
             sysInstText = `MODE: SHADOWING. The user will try to repeat phrases. ONLY evaluate their pronunciation. DO NOT evaluate grammar or start a conversation. If they fail, tell them exactly what sound they failed in Spanish and ask them to repeat. If they succeed, congratulate them and generate a NEW native idiom that uses their weak points: ${historicalContext}. Always speak back naturally.`;
@@ -153,8 +162,7 @@ wss.on('connection', async (ws, req) => {
             setup: {
                 model: "models/gemini-3.1-flash-live-preview",
                 generationConfig: {
-                    responseModalities: ["AUDIO"],
-                    speechConfig: { speakingRate }  // 0.5 = lento, 1.0 = normal
+                    responseModalities: ["AUDIO"]
                 },
                 systemInstruction: {
                     parts: [{ text: sysInstText }]
