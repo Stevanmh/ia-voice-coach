@@ -57,8 +57,8 @@ function App() {
   const silenceFramesRef = useRef<number>(0);
   const silenceCooldownRef = useRef<boolean>(false);
 
-  // FASE 17: Ref para la velocidad de reproducción (actualizada por el slider)
-  const playbackSpeedRef = useRef<number>(1.0);
+  // FASE 17: GainNode para control de VOLUMEN (sin distorsión de pitch)
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   useEffect(() => {
     try {
@@ -85,7 +85,18 @@ function App() {
     }
   }, [])
 
-  const isGuest = !WebApp.initDataUnsafe?.user?.id;
+  // isGuest como estado reactivo: Telegram puede inyectar initData ligeramente después del primer render
+  const [isGuest, setIsGuest] = useState<boolean>(true);
+  useEffect(() => {
+    const check = () => {
+      const hasUser = !!WebApp.initDataUnsafe?.user?.id;
+      setIsGuest(!hasUser);
+    };
+    check();
+    // Dar 500ms a Telegram para inyectar los datos si aún no lo hizo
+    const t = setTimeout(check, 500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Referencia para el reloj de sincronización
   const nextStartTimeRef = useRef<number>(0);
@@ -101,13 +112,15 @@ function App() {
       const source = playbackContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       
-      // Velocidad adaptativa: usa la ref que se actualiza en tiempo real con el slider
-      source.playbackRate.value = playbackSpeedRef.current;
+      // Pasar el audio por el GainNode (control de volumen) antes de los parlantes
+      // Usar GainNode en vez de playbackRate evita la distorsión de pitch
+      if (gainNodeRef.current) {
+        source.connect(gainNodeRef.current);
+      } else {
+        source.connect(playbackContextRef.current.destination);
+      }
       
-      // Conectamos directo a los parlantes para asegurar el sonido
-      source.connect(playbackContextRef.current.destination);
-      
-      // Y también conectamos al analizador para el lip-sync
+      // También conectar al analizador para el lip-sync
       if (analyserRef.current) {
         source.connect(analyserRef.current);
       }
@@ -206,11 +219,17 @@ function App() {
       // Contexto de Reproducción (24kHz para la voz de la IA)
       playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
       
-      // Creamos el analizador para el lip-sync
+      // GainNode: control de volumen SIN distorsión de pitch
+      const gainNode = playbackContextRef.current.createGain();
+      gainNode.gain.value = 1.0; // 100% de volumen por defecto
+      gainNodeRef.current = gainNode;
+      gainNode.connect(playbackContextRef.current.destination);
+
+      // Analizador para el lip-sync (conectado al GainNode para leer el volumen real)
       const analyser = playbackContextRef.current.createAnalyser();
       analyser.fftSize = 256;
       analyserRef.current = analyser;
-      analyser.connect(playbackContextRef.current.destination);
+      gainNode.connect(analyser);
 
       // Bucle para extraer volumen a 60fps
       const updateVolume = () => {
@@ -244,8 +263,6 @@ function App() {
       socket.onopen = () => {
         setIsCalling(true);
         setStatus('En línea - ¡Te escucho!');
-        // Inicializar la velocidad de reproducción según el nivel del usuario
-        playbackSpeedRef.current = SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0;
         
         source.connect(processor);
         processor.connect(audioContext.destination);
@@ -308,6 +325,9 @@ function App() {
     if (playbackContextRef.current) { playbackContextRef.current.close(); playbackContextRef.current = null; }
     if (socketRef.current) { socketRef.current.close(); socketRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(track => track.stop()); streamRef.current = null; }
+    gainNodeRef.current = null;
+    analyserRef.current = null;
+    currentSourceRef.current = null;
     
     audioStack.current = [];
     isPlayingRef.current = false;
@@ -396,7 +416,7 @@ function App() {
               backgroundSize: '0.8em auto' 
             }}
           >
-            <option value="conversation">💬 Chat Libre</option>
+            <option value="conversation">🎙️ Conversación Libre</option>
             <option value="shadowing">🦜 Shadowing</option>
             <option value="roleplay_tech_interview">🎭 Entrevista Tech</option>
             <option value="roleplay_hotel_complaint">🏨 Queja de Hotel</option>
@@ -462,29 +482,26 @@ function App() {
         </div>
       )}
 
-      {/* FASE 17: Control manual de velocidad - Solo visible en llamada */}
+      {/* Control de VOLUMEN - usa GainNode, sin distorsión de pitch */}
       {isCalling && (
-        <div className="flex items-center gap-3 text-xs text-slate-500 w-full max-w-[200px] mx-auto mb-2" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
-        <span title="Más lento (ideal A1)">🐢</span>
-        <input
-          type="range" 
-          min="0.6" 
-          max="1.2" 
-          step="0.05"
-          defaultValue={SPEED_MAP[userProfile?.level ?? 'B1'] ?? 1.0}
-          className="flex-1 accent-blue-500"
-          onChange={(e) => {
-            const val = parseFloat(e.target.value);
-            // Actualizar la ref para que los próximos chunks de audio usen esta velocidad
-            playbackSpeedRef.current = val;
-            // También actualizar el chunk en reproducción actual si existe
-            if (currentSourceRef.current) {
-              currentSourceRef.current.playbackRate.value = val;
-            }
-          }}
-        />
-        <span title="Más rápido">🐇</span>
-      </div>
+        <div className="flex items-center gap-3 text-xs text-slate-500 w-full max-w-[220px] mx-auto mb-2" style={{ animation: 'fadeInUp 0.5s ease-out both' }}>
+          <span title="Volumen bajo">🔈</span>
+          <input
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.05"
+            defaultValue="1.0"
+            className="flex-1 accent-blue-500"
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (gainNodeRef.current) {
+                gainNodeRef.current.gain.value = val;
+              }
+            }}
+          />
+          <span title="Volumen alto">🔊</span>
+        </div>
       )}
 
       {/* Footer: Controles */}
