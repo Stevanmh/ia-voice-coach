@@ -190,6 +190,14 @@ wss.on('connection', async (ws, req) => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'ready' }));
                 }
+                
+                // Forzar a Gemini a hablar primero para evitar el problema de Cold-Start del VAD
+                geminiWs.send(JSON.stringify({
+                    clientContent: {
+                        turns: [{ role: "user", parts: [{ text: "The student just connected. Greet them briefly with 1 short sentence to start the practice." }] }],
+                        turnComplete: true
+                    }
+                }));
             }
             
             // Acumular transcripción del Coach para la memoria nocturna
@@ -270,15 +278,50 @@ wss.on('connection', async (ws, req) => {
     ws.on('close', async () => {
         console.log(`🔌 [Live API] Cliente desconectado (${userId})`);
         
-        // --- APRENDIZAJE POST-SESIÓN ---
+        // --- APRENDIZAJE POST-SESIÓN Y EVALUACIÓN ---
         if (sessionTranscript.length > 50 && userId !== 'guest') {
             try {
-                console.log("🧠 [Memory] Analizando sesión para el futuro...");
+                console.log("🧠 [Memory & Stats] Evaluando la sesión...");
                 const model = new GoogleGenerativeAI(env.GEMINI_API_KEY).getGenerativeModel({ model: "gemini-1.5-flash" });
-                const prompt = `Analyze this transcript and extract 1 or 2 key pedagogical insights about the student. 
-                                Format: Short English sentences. Transcript:\n${sessionTranscript}`;
+                const prompt = `Analyze this AI English Coach's transcript. The transcript contains only the Coach's responses to a student. 
+Based on how the Coach responded, corrected, or praised the student, deduce 1 or 2 key pedagogical insights about the student's English level and mistakes.
+ALSO, estimate the student's scores (0-100) in Grammar, Pronunciation, Fluency, and Vocabulary.
+Format the output STRICTLY as a JSON object:
+{
+  "insights": "Short English sentences describing the student's performance",
+  "scores": {
+    "grammar": 80,
+    "pronunciation": 85,
+    "fluency": 70,
+    "vocabulary": 75
+  }
+}
+Transcript:\n${sessionTranscript}`;
                 const result = await model.generateContent(prompt);
-                await EmbeddingService.saveMemory(userId, result.response.text());
+                const text = result.response.text();
+                const jsonStr = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const data = JSON.parse(jsonStr);
+
+                await EmbeddingService.saveMemory(userId, data.insights);
+                
+                const { prisma } = await import('@lib/prisma');
+                await prisma.session.create({
+                    data: {
+                        userId,
+                        transcript: sessionTranscript,
+                        corrected: "Live Session (Coach side only)",
+                        grammarScore: data.scores.grammar,
+                        pronunciationScore: data.scores.pronunciation,
+                        fluencyScore: data.scores.fluency,
+                        vocabScore: data.scores.vocabulary,
+                    }
+                });
+                
+                await prisma.user.update({
+                    where: { id: userId },
+                    data: { sessionCount: { increment: 1 } }
+                });
+                console.log("✅ [Memory & Stats] Sesión guardada con éxito.");
             } catch (e) { console.error("❌ [Learning Error]:", e); }
         }
 
