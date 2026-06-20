@@ -188,15 +188,16 @@ wss.on('connection', async (ws, req) => {
             if (response.setupComplete) {
                 isGeminiReady = true;
                 if (initialAudioBuffer.length > 0) {
-                    const combinedData = Buffer.concat(initialAudioBuffer);
-                    geminiWs.send(JSON.stringify({
-                        realtimeInput: {
-                            audio: {
-                                mimeType: "audio/pcm;rate=16000",
-                                data: combinedData.toString('base64')
+                    for (const chunk of initialAudioBuffer) {
+                        geminiWs.send(JSON.stringify({
+                            realtimeInput: {
+                                audio: {
+                                    mimeType: "audio/pcm;rate=16000",
+                                    data: chunk.toString('base64')
+                                }
                             }
-                        }
-                    }));
+                        }));
+                    }
                     initialAudioBuffer = [];
                 }
             }

@@ -197,6 +197,13 @@ function App() {
         setAppMode(response.mode);
         stopCall(); // Forzar reinicio de llamada para aplicar nuevo prompt
       }
+
+      // FASE 25: Activar micrófono solo cuando la IA está lista
+      if (response.setupComplete && streamRef.current) {
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        setStatus('En línea - ¡Te escucho!');
+      }
     } catch (err) {
       // Ignorar errores de parseo si llegan datos binarios accidentales
       if (!(e.data instanceof Blob)) {
@@ -263,10 +270,10 @@ function App() {
 
       socket.onopen = () => {
         setIsCalling(true);
-        setStatus('En línea - ¡Te escucho!');
+        setStatus('Conectando al Coach...');
         
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+        // FASE 25: El micrófono NO se conecta aquí.
+        // Esperamos a que Gemini envíe 'setupComplete' para evitar hablar al vacío.
 
         processor.onaudioprocess = (e) => {
           if (socket.readyState !== WebSocket.OPEN) return;
