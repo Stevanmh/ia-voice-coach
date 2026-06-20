@@ -3,11 +3,6 @@ import WebApp from '@twa-dev/sdk'
 import { CoachAvatar } from './components/CoachAvatar'
 import { ProgressBar } from './components/ProgressBar'
 
-// FASE 17: Mapa CEFR → velocidad de reproducción base
-const SPEED_MAP: Record<string, number> = {
-  'A1': 0.75, 'A2': 0.85, 'B1': 0.95, 'B2': 1.0, 'C1': 1.0, 'C2': 1.0
-};
-
 // FASE 22: Constantes para detección de silencio
 const SILENCE_THRESHOLD = 0.005;
 const SILENCE_TIMEOUT_FRAMES = 420; // 7 segundos a ~60fps
