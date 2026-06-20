@@ -160,6 +160,8 @@ wss.on('connection', async (ws, req) => {
     });
 
     // Puente: Gemini -> Servidor -> Navegador
+    // OPTIMIZACIÓN ANTI-ENTRECORTADO: detectamos si el mensaje es solo audio
+    // y lo enviamos como buffer binario puro para evitar la doble serialización JSON/base64
     geminiWs.on('message', (data) => {
         try {
             const dataString = data.toString();
@@ -167,19 +169,33 @@ wss.on('connection', async (ws, req) => {
             
             // Acumular transcripción del Coach para la memoria nocturna
             if (response.serverContent?.modelTurn?.parts) {
-                const text = response.serverContent.modelTurn.parts
-                    .map((p: any) => p.text)
-                    .filter(Boolean)
-                    .join(' ');
-                if (text) sessionTranscript += `Coach: \${text}\n`;
+                const parts = response.serverContent.modelTurn.parts;
+                const text = parts.map((p: any) => p.text).filter(Boolean).join(' ');
+                if (text) sessionTranscript += `Coach: ${text}\n`;
+
+                // Si el mensaje solo tiene audio (sin texto), lo enviamos como binario
+                // para evitar el overhead de base64 y reducir latencia
+                const hasOnlyAudio = parts.every((p: any) => p.inlineData && !p.text);
+                if (hasOnlyAudio) {
+                    for (const part of parts) {
+                        if (part.inlineData?.data) {
+                            const audioBinary = Buffer.from(part.inlineData.data, 'base64');
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(audioBinary);
+                            }
+                        }
+                    }
+                    return;
+                }
             }
 
+            // Para cualquier otro mensaje (texto, turnComplete, etc.), seguimos enviando JSON
             if (ws.readyState === WebSocket.OPEN) ws.send(dataString);
         } catch (e) {
-            // Si por alguna razón no es JSON, lo enviamos como string igualmente
             if (ws.readyState === WebSocket.OPEN) ws.send(data.toString());
         }
     });
+
 
     // Puente: Navegador -> Servidor -> Gemini
     ws.on('message', async (data) => {

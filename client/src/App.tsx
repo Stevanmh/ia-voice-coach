@@ -114,9 +114,11 @@ function App() {
 
       const now = playbackContextRef.current.currentTime;
       
-      // Si el reloj se quedó atrás, reiniciamos desde "ya mismo"
+      // ANTI-ENTRECORTADO: Si el reloj se quedó atrás por jitter de red,
+      // reiniciamos con solo 30ms de margen (antes era 100ms, creando silencios audibles).
+      // 30ms es imperceptible al oído humano pero suficiente para estabilizar el buffer.
       if (nextStartTimeRef.current < now) {
-        nextStartTimeRef.current = now + 0.1; // 100ms de margen inicial para estabilidad
+        nextStartTimeRef.current = now + 0.03;
       }
 
       source.start(nextStartTimeRef.current);
@@ -131,10 +133,22 @@ function App() {
   };
 
   const handleIncomingMessage = async (e: MessageEvent) => {
+    // OPTIMIZACIÓN: El servidor envía audio puro como ArrayBuffer
+    // para evitar el overhead de base64. Lo manejamos aquí directamente.
+    if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
+      if (isInterruptedRef.current) return;
+      const arrayBuffer = e.data instanceof Blob ? await e.data.arrayBuffer() : e.data;
+      const pcm16 = new Int16Array(arrayBuffer);
+      const float32 = new Float32Array(pcm16.length);
+      for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 0x8000;
+      scheduleAudioChunk(float32);
+      return;
+    }
+
     try {
       const response = JSON.parse(e.data);
       
-      // 1. Manejar Voz de la IA (Estructura Gemini Live)
+      // 1. Manejar Voz de la IA en formato JSON legacy (texto + audio mezclados)
       const parts = response.serverContent?.modelTurn?.parts;
       if (parts) {
         for (const part of parts) {
@@ -224,6 +238,7 @@ function App() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = import.meta.env.DEV ? '127.0.0.1:3000' : window.location.host;
       const socket = new WebSocket(`${protocol}//${host}?userId=${userId}`);
+      socket.binaryType = 'arraybuffer'; // Recibir audio binario directamente sin conversión Blob
       socketRef.current = socket;
 
       socket.onopen = () => {
