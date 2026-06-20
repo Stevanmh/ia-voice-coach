@@ -57,6 +57,8 @@ function App() {
   // FASE 22: Referencias para el detector de silencio
   const silenceFramesRef = useRef<number>(0);
   const silenceCooldownRef = useRef<boolean>(false);
+  // FASE 25: Guard para enviar audio solo cuando la API de Gemini está lista
+  const isReadyRef = useRef<boolean>(false);
 
   // FASE 17: GainNode para control de VOLUMEN (sin distorsión de pitch)
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -196,7 +198,13 @@ function App() {
       // FASE 23: Respuesta a cambio de modo
       if (response.type === 'mode_update') {
         setAppMode(response.mode);
-        stopCall(); // Forzar reinicio de llamada para aplicar nuevo prompt
+        stopCall();
+      }
+
+      // FASE 25: Gemini confirmó que está listo — activar envío de audio
+      if (response.type === 'ready') {
+        isReadyRef.current = true;
+        setStatus('En línea - ¡Te escucho!');
       }
     } catch (err) {
       // Ignorar errores de parseo si llegan datos binarios accidentales
@@ -265,10 +273,11 @@ function App() {
 
       socket.onopen = () => {
         setIsCalling(true);
-        setStatus('En línea - ¡Te escucho!');
+        setStatus('Conectando al Coach...');
+        isReadyRef.current = false; // reset por si hubo una sesión anterior
         
-        // Conectar el micrófono inmediatamente. El servidor tiene buffer interno
-        // para no perder audio mientras Gemini procesa el setup.
+        // Conectar inmediatamente al grafo de audio (evita GC del ScriptProcessorNode)
+        // pero NO enviamos datos hasta recibir la señal 'ready' del servidor
         if (micSourceRef.current && processorRef.current && audioContextRef.current) {
           micSourceRef.current.connect(processorRef.current);
           processorRef.current.connect(audioContextRef.current.destination);
@@ -304,6 +313,8 @@ function App() {
             const s = Math.max(-1, Math.min(1, inputData[i]));
             pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
           }
+          // Solo enviar audio cuando Gemini confirmó que está escuchando
+          if (!isReadyRef.current) return;
           socket.send(pcmData.buffer);
         };
       };
@@ -337,6 +348,7 @@ function App() {
     analyserRef.current = null;
     currentSourceRef.current = null;
     
+    isReadyRef.current = false;
     audioStack.current = [];
     isPlayingRef.current = false;
 

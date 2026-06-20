@@ -136,9 +136,9 @@ wss.on('connection', async (ws, req) => {
     const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${env.GEMINI_API_KEY}`;
     const geminiWs = new WebSocket(GEMINI_LIVE_URL);
 
-    // Buffer para evitar pérdida de palabras iniciales mientras Gemini procesa el setup
+    // La señal 'ready' viene del servidor cuando Gemini confirma setupComplete
+    // El cliente conecta el micro inmediatamente para evitar GC, pero espera esta señal para enviar audio
     let isGeminiReady = false;
-    let initialAudioBuffer: Buffer[] = [];
 
     geminiWs.on('open', async () => {
         let sysInstText = `You are a professional English Coach. Focus on pronunciation and grammar. Keep responses under 2 sentences. ALWAYS respond in English, but you can say 1 brief sentence in Spanish if the user struggles. ${historicalContext} ${lastQuestion ? `\nPREVIOUS SESSION BRIDGE: Last time you asked the student: "${lastQuestion}". Reference this naturally if relevant.` : ''}`;
@@ -184,21 +184,11 @@ wss.on('connection', async (ws, req) => {
             const dataString = data.toString();
             const response = JSON.parse(dataString);
 
-            // Flushear el buffer de audio una vez Gemini está listo para escuchar
+            // Gemini está listo: avisar al cliente para que empiece a enviar audio
             if (response.setupComplete) {
                 isGeminiReady = true;
-                if (initialAudioBuffer.length > 0) {
-                    for (const chunk of initialAudioBuffer) {
-                        geminiWs.send(JSON.stringify({
-                            realtimeInput: {
-                                audio: {
-                                    mimeType: "audio/pcm;rate=16000",
-                                    data: chunk.toString('base64')
-                                }
-                            }
-                        }));
-                    }
-                    initialAudioBuffer = [];
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ready' }));
                 }
             }
             
@@ -273,8 +263,6 @@ wss.on('connection', async (ws, req) => {
                         }
                     }
                 }));
-            } else {
-                initialAudioBuffer.push(data as Buffer);
             }
         }
     });
