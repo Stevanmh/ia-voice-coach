@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
 export class EmbeddingService {
-    private static model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    private static model = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
 
     /**
      * Genera un vector numérico (768 dimensiones) a partir de un texto.
