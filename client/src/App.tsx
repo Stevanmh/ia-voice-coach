@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
-import WebApp from '@twa-dev/sdk'
+// Leemos window.Telegram.WebApp en tiempo de ejecución, no en tiempo de importación
+// Esto evita el race condition donde el SDK captura el objeto antes de que Telegram lo inyecte
+const getTWA = () => (window as any).Telegram?.WebApp ?? {};
 import { CoachAvatar } from './components/CoachAvatar'
 import { ProgressBar } from './components/ProgressBar'
 
@@ -60,14 +62,14 @@ function App() {
 
   useEffect(() => {
     try {
-      WebApp.expand();
-      WebApp.ready();
+      getTWA().expand?.();
+      getTWA().ready?.();
     } catch (e) {
       console.warn("Telegram WebApp SDK no disponible");
     }
 
     // FASE 17 & 23: Cargar perfil del usuario para velocidad adaptativa y modo
-    const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
+    const userId = getTWA().initDataUnsafe?.user?.id || 'guest';
     if (userId !== 'guest') {
         fetch(`/api/user/${userId}/profile`)
             .then(r => r.json())
@@ -87,7 +89,7 @@ function App() {
   const [isGuest, setIsGuest] = useState<boolean>(true);
   useEffect(() => {
     const check = () => {
-      const hasUser = !!WebApp.initDataUnsafe?.user?.id;
+      const hasUser = !!getTWA().initDataUnsafe?.user?.id;
       setIsGuest(!hasUser);
     };
     check();
@@ -250,8 +252,8 @@ function App() {
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
-      setStatus('Conectando con el Coach...')
-      const userId = WebApp.initDataUnsafe?.user?.id || 'guest';
+      // FASE 14: Enviar `userId` para tener persistencia
+      const userId = getTWA().initDataUnsafe?.user?.id || 'guest';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = import.meta.env.DEV ? '127.0.0.1:3000' : window.location.host;
       // Pasar la velocidad de habla al servidor para que Gemini la aplique desde el origen
@@ -464,9 +466,9 @@ function App() {
           <details className="text-left mb-3">
             <summary className="text-xs text-yellow-400 cursor-pointer font-mono">🔍 Debug SDK</summary>
             <div className="mt-1 text-xs font-mono bg-slate-900/80 p-2 rounded-lg break-all text-slate-300 max-h-24 overflow-y-auto">
-              <div><span className="text-yellow-300">initData:</span> {WebApp.initData ? `"${WebApp.initData.slice(0, 80)}..."` : '❌ VACÍO'}</div>
-              <div><span className="text-yellow-300">userId:</span> {String(WebApp.initDataUnsafe?.user?.id ?? '❌ sin user')}</div>
-              <div><span className="text-yellow-300">platform:</span> {WebApp.platform ?? '❌ sin platform'}</div>
+              <div><span className="text-yellow-300">initData:</span> {getTWA().initData ? `"${getTWA().initData.slice(0, 80)}..."` : '❌ VACÍO'}</div>
+              <div><span className="text-yellow-300">userId:</span> {String(getTWA().initDataUnsafe?.user?.id ?? '❌ sin user')}</div>
+              <div><span className="text-yellow-300">platform:</span> {getTWA().platform ?? '❌ sin platform'}</div>
             </div>
           </details>
           <a 
