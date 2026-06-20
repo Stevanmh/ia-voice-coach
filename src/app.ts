@@ -136,6 +136,10 @@ wss.on('connection', async (ws, req) => {
     const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${env.GEMINI_API_KEY}`;
     const geminiWs = new WebSocket(GEMINI_LIVE_URL);
 
+    // Buffer para evitar pérdida de palabras iniciales mientras Gemini procesa el setup
+    let isGeminiReady = false;
+    let initialAudioBuffer: Buffer[] = [];
+
     geminiWs.on('open', async () => {
         let sysInstText = `You are a professional English Coach. Focus on pronunciation and grammar. Keep responses under 2 sentences. ALWAYS respond in English, but you can say 1 brief sentence in Spanish if the user struggles. ${historicalContext} ${lastQuestion ? `\nPREVIOUS SESSION BRIDGE: Last time you asked the student: "${lastQuestion}". Reference this naturally if relevant.` : ''}`;
 
@@ -179,6 +183,23 @@ wss.on('connection', async (ws, req) => {
         try {
             const dataString = data.toString();
             const response = JSON.parse(dataString);
+
+            // Flushear el buffer de audio una vez Gemini está listo para escuchar
+            if (response.setupComplete) {
+                isGeminiReady = true;
+                if (initialAudioBuffer.length > 0) {
+                    const combinedData = Buffer.concat(initialAudioBuffer);
+                    geminiWs.send(JSON.stringify({
+                        realtimeInput: {
+                            mediaChunks: [{
+                                mimeType: "audio/pcm;rate=16000",
+                                data: combinedData.toString('base64')
+                            }]
+                        }
+                    }));
+                    initialAudioBuffer = [];
+                }
+            }
             
             // Acumular transcripción del Coach para la memoria nocturna
             if (response.serverContent?.modelTurn?.parts) {
@@ -242,14 +263,18 @@ wss.on('connection', async (ws, req) => {
             }
         } catch (e) {
             // Audio Binario
-            geminiWs.send(JSON.stringify({
-                realtimeInput: {
-                    audio: {
-                        mimeType: "audio/pcm;rate=16000",
-                        data: Buffer.from(data as Buffer).toString('base64')
+            if (isGeminiReady) {
+                geminiWs.send(JSON.stringify({
+                    realtimeInput: {
+                        mediaChunks: [{
+                            mimeType: "audio/pcm;rate=16000",
+                            data: Buffer.from(data as Buffer).toString('base64')
+                        }]
                     }
-                }
-            }));
+                }));
+            } else {
+                initialAudioBuffer.push(data as Buffer);
+            }
         }
     });
 

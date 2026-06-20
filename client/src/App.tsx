@@ -464,7 +464,7 @@ function App() {
           <p className="text-sm text-slate-300 mb-3 leading-tight">
             Estás en modo prueba. Tu progreso no se guardará.
           </p>
-          {/* DEBUG TEMPORAL: muestra qué ve el SDK — borrar después del diagnóstico */}
+          {/* DEBUG TEMPORAL: Ocultado porque ya resolvimos el login
           <details className="text-left mb-3">
             <summary className="text-xs text-yellow-400 cursor-pointer font-mono">🔍 Debug SDK</summary>
             <div className="mt-1 text-xs font-mono bg-slate-900/80 p-2 rounded-lg break-all text-slate-300 max-h-24 overflow-y-auto">
@@ -473,6 +473,7 @@ function App() {
               <div><span className="text-yellow-300">platform:</span> {getTWA().platform ?? '❌ sin platform'}</div>
             </div>
           </details>
+          */}
           <a 
             href="https://t.me/tu_bot_aqui" 
             target="_blank" 
