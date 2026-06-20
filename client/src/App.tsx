@@ -391,7 +391,9 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col items-center w-full min-h-screen pb-36 p-6 text-white font-sans overflow-y-auto">
+    <div className="flex flex-col h-screen w-full text-white font-sans bg-[#0a0e1a]">
+      {/* ── ZONA SCROLLABLE ── */}
+      <div className="flex-1 overflow-y-auto flex flex-col items-center w-full px-6 pt-6 pb-2 gap-3">
       
       {/* Header FASE 18, 23 & 24: Jerarquía Premium, Saludo y Modo */}
       <div className="text-center mt-6 w-full max-w-sm flex flex-col items-center gap-3" style={{ animation: 'fadeInUp 0.6s ease-out both' }}>
@@ -513,9 +515,10 @@ function App() {
           </div>
         </div>
       )}
+      </div>{/* fin zona scrollable */}
 
-      {/* Footer fijo: siempre visible en la parte inferior */}
-      <div className="fixed bottom-0 left-0 right-0 px-6 pb-6 pt-3 flex flex-col gap-3 max-w-xs mx-auto">
+      {/* ── ZONA FIJA INFERIOR: siempre visible, no tapa contenido ── */}
+      <div className="flex-shrink-0 w-full px-6 pb-6 pt-2 flex flex-col gap-3 max-w-xs mx-auto">
         {isCalling && (
           <div className="grid grid-cols-2 gap-3 w-full">
             <button
