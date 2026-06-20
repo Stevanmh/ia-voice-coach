@@ -45,6 +45,7 @@ function App() {
   const playbackContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   
   // Gestión de la cola de reproducción (Audio Stack)
   const audioStack = useRef<Float32Array[]>([]);
@@ -199,9 +200,9 @@ function App() {
       }
 
       // FASE 25: Activar micrófono solo cuando la IA está lista
-      if (response.setupComplete && streamRef.current) {
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+      if (response.setupComplete && streamRef.current && micSourceRef.current && processorRef.current && audioContextRef.current) {
+        micSourceRef.current.connect(processorRef.current);
+        processorRef.current.connect(audioContextRef.current.destination);
         setStatus('En línea - ¡Te escucho!');
       }
     } catch (err) {
@@ -256,6 +257,7 @@ function App() {
       updateVolume();
       
       const source = audioContext.createMediaStreamSource(stream);
+      micSourceRef.current = source;
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
@@ -329,6 +331,7 @@ function App() {
     setTranscript('');
     
     if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
+    if (micSourceRef.current) { micSourceRef.current.disconnect(); micSourceRef.current = null; }
     if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
     if (playbackContextRef.current) { playbackContextRef.current.close(); playbackContextRef.current = null; }
     if (socketRef.current) { socketRef.current.close(); socketRef.current = null; }
